@@ -8,7 +8,29 @@ davon unabhängig: Bewegung, Feuerrate und seine Klänge kümmern sich nicht um 
 Die Spielmechanik ist an SKYSTRIKE angelehnt (Godot-Port von `shmup.lua`), die Song-Analyse stammt aus
 Rhytmicker (`public/js/analysis.js`, unverändert übernommen).
 
-## Starten
+## Starten mit Docker Compose
+
+```bash
+git clone https://github.com/mpue/hypersense.git
+cd hypersense
+docker compose up -d --build
+```
+
+Dann <http://localhost:5180> öffnen. Die Songs liegen in `./music` und werden schreibgeschützt in den Container
+gehängt. Weitere Songs (.mp3/.ogg/.wav/.m4a/.flac) einfach dort ablegen, sie erscheinen nach einem Neuladen der
+Seite in der Songliste, ohne Neustart des Containers.
+
+Port oder Musikordner ändern: `.env.example` nach `.env` kopieren und anpassen:
+
+```dotenv
+HYPERSENSE_PORT=8080
+MUSIC_PATH=/pfad/zu/meiner/musik
+```
+
+Nützlich: `docker compose logs -f` (Log), `docker compose down` (stoppen). Der Container läuft als
+unprivilegierter Nutzer, hat einen Healthcheck (`/healthz`) und startet automatisch neu.
+
+## Starten ohne Docker
 
 Node.js ≥ 18, keine Abhängigkeiten:
 
@@ -30,6 +52,19 @@ mit `?song=Name` einen bestimmten.
 | C / L | X / Y | Drohnen-Modus A (vorn) / B (Flanke) |
 | P / Esc | Start | Pause |
 | F | | Vollbild |
+
+### Handy / Touch (Querformat)
+
+Im selben WLAN `http://<IP-des-Rechners>:5180` im Handy-Browser öffnen. Beim ersten Tippen schaltet das
+Spiel den Ton frei, geht in den Vollbildmodus und sperrt das Querformat (Android). Unter Windows muss die
+Firewall eingehende Verbindungen auf Port 5180 für Node erlauben.
+
+- **Fliegen:** irgendwo mit einem Finger ziehen. Das Schiff folgt der Fingerbewegung relativ und bleibt
+  sichtbar, Dauerfeuer ist automatisch an.
+- **HYPER** (großer Knopf mit Ladering) und **DRONE** (Modus A/B) rechts unten, **Pause** oben rechts.
+- **Titel:** linken oder rechten Rand antippen, um den Song zu wählen; in der Mitte tippen startet.
+- **Hochformat:** Das Spiel pausiert und zeigt einen Dreh-Hinweis.
+- Touch-Geräte rechnen intern mit 1280×720 statt 1920×1080 (`?res=1` erzwingt volle Auflösung).
 
 ## Spielprinzip
 
@@ -146,7 +181,8 @@ einzelner Samples ist bei solchen Libraries meist nicht erlaubt.
 ## Projektstruktur
 
 ```
-server.js              statischer Server + /api/songs
+server.js              statischer Server + /api/songs + /healthz
+Dockerfile, docker-compose.yml, .env.example
 public/js/analysis.js  Song-Analyse (aus Rhytmicker)
 public/js/level.js     Level aus der Analyse
 public/js/audio.js     Wiedergabe, Song-Uhr, Effekte (Gegner terminiert, Spieler sofort)

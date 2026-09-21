@@ -1,0 +1,12 @@
+services:
+  hypersense:
+    build: .
+    image: hypersense:latest
+    container_name: hypersense
+    ports:
+      - "${HYPERSENSE_PORT:-5180}:5180"
+    volumes:
+      # Songs (.mp3/.ogg/.wav/.m4a/.flac) – neue Dateien erscheinen nach einem Neuladen in der Songliste
+      - "${MUSIC_PATH:-./music}:/music:ro"
+    restart: unless-stopped
+    init: true

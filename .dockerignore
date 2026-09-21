@@ -1,0 +1,15 @@
+.git
+.gitignore
+.gitattributes
+.claude
+.env
+node_modules
+# Songs kommen per Volume, nicht ins Image (die Samples in public/sfx bleiben drin)
+music
+# Asset-Pipeline und Roh-Renders braucht der Server nicht
+art
+tools
+Dockerfile
+docker-compose.yml
+.dockerignore
+README.md
