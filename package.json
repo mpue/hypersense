@@ -1,0 +1,12 @@
+{
+  "name": "hypersense",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Horizontal shoot'em up im Browser, dessen Gegner im Takt der Musik angreifen",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

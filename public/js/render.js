@@ -1,0 +1,517 @@
+// Hypersense – Darstellung auf einem 1920×1080-Canvas.
+(function () {
+  'use strict';
+
+  const W = 1920, H = 1080;
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const FONT = '"Orbitron", "Segoe UI", sans-serif';
+
+  // Weich leuchtender Punkt als vorgerendertes Bild (für Geschosse, Mündungsfeuer, Explosionen ohne Sprite)
+  function glow(color, r, core = 0.25) {
+    const c = document.createElement('canvas');
+    c.width = c.height = r * 2;
+    const g = c.getContext('2d');
+    const gr = g.createRadialGradient(r, r, 0, r, r, r);
+    gr.addColorStop(0, '#ffffff');
+    gr.addColorStop(core, color);
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    g.fillStyle = gr;
+    g.fillRect(0, 0, r * 2, r * 2);
+    return c;
+  }
+
+  // Einfarbige Silhouette eines Sprites (Treffer-Blitz, dunkle Vordergrund-Felsen)
+  function tinted(img, color, alpha = 1) {
+    const c = document.createElement('canvas');
+    c.width = img.width; c.height = img.height;
+    const g = c.getContext('2d');
+    g.drawImage(img, 0, 0);
+    g.globalCompositeOperation = 'source-atop';
+    g.globalAlpha = alpha;
+    g.fillStyle = color;
+    g.fillRect(0, 0, c.width, c.height);
+    return c;
+  }
+
+  class Renderer {
+    constructor(canvas, images) {
+      this.cv = canvas;
+      this.c = canvas.getContext('2d');
+      this.img = images;
+      this.white = {};
+      for (const [k, im] of Object.entries(images)) if (im) this.white[k] = tinted(im, '#ffffff', 0.85);
+      this.darkRock = images.asteroid ? tinted(images.asteroid, '#04050a', 0.85) : null;
+      this.glows = {
+        violet: glow('#b36bff', 32), pink: glow('#ff5ad2', 36), orange: glow('#ff9a3c', 32),
+        blue: glow('#5ab8ff', 48), green: glow('#7dff6a', 24), white: glow('#ffffff', 32, 0.5),
+        fire: glow('#ff8a2a', 64, 0.15),
+      };
+      const rnd = (a, b) => a + Math.random() * (b - a);
+      this.stars = [0.12, 0.3, 0.7].map((sp, l) => Array.from({ length: [260, 140, 60][l] }, () => ({
+        x: rnd(0, W), y: rnd(0, H), b: rnd(0.3, 1), sp, s: [1, 1.6, 2.4][l], tw: rnd(0, TAU) })));
+      this.decor = Array.from({ length: 5 }, (_, i) => ({ x: rnd(0, W + 800), y: i % 2 ? rnd(990, 1100) : rnd(-90, 20),
+        s: rnd(150, 320), rot: rnd(0, TAU), spin: rnd(-0.2, 0.2), sp: rnd(1.4, 2.2) }));
+      this.bgX = 0;
+      this.warp = 0;
+    }
+
+    spr(name, x, y, h, o = {}) {
+      const im = this.img[name];
+      if (!im) return false;
+      const w = h * im.width / im.height, c = this.c;
+      c.save();
+      c.translate(x, y);
+      if (o.rot) c.rotate(o.rot);
+      if (o.flip) c.scale(-1, 1);
+      if (o.alpha !== undefined) c.globalAlpha = o.alpha;
+      if (o.add) c.globalCompositeOperation = 'lighter';
+      c.drawImage(o.flash && this.white[name] ? this.white[name] : im, -w / 2, -h / 2, w, h);
+      c.restore();
+      return true;
+    }
+
+    dot(g, x, y, r, alpha = 1) {
+      const c = this.c;
+      c.globalAlpha = alpha;
+      c.drawImage(g, x - r, y - r, r * 2, r * 2);
+      c.globalAlpha = 1;
+    }
+
+    // ------------------------------------------------------------------ Bild
+
+    frame(dt, g, st) {
+      const c = this.c;
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      const drop = g && g.L.dropBeats.some(d => st.beat >= d && st.beat < d + 8);
+      this.warp += ((drop || st.mode === 'title' ? 1 : 0) - this.warp) * Math.min(1, dt * 2);
+      const speed = 70 * (1 + 4 * this.warp);
+      this.bgX += speed * dt;
+
+      if (g && g.shake > 0) c.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
+      this.background(dt, speed, st);
+      if (g) this.world(g, st);
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      this.foreground(dt, speed);
+      if (g && g.flash > 0) {
+        c.fillStyle = `rgba(200,230,255,${g.flash * 0.55})`;
+        c.fillRect(0, 0, W, H);
+      }
+      this.vignette();
+      if (g && st.mode !== 'title') this.hud(g, st);
+      if (g && g.banner) this.banner(g, st);
+    }
+
+    background(dt, speed, st) {
+      const c = this.c, lv = st.levels || [0, 0, 0];
+      c.fillStyle = '#02030a';
+      c.fillRect(0, 0, W, H);
+      c.globalCompositeOperation = 'lighter';
+      // Nebel und Galaxie wandern langsam durchs Bild (additiv auf Schwarz)
+      const neb = this.img.nebula;
+      if (neb) {
+        const nw = 2600, nh = nw * neb.height / neb.width, span = nw + W;
+        const x = W - ((this.bgX * 0.08) % span);
+        c.globalAlpha = 0.55 + 0.25 * lv[1];
+        c.drawImage(neb, x, H / 2 - nh / 2, nw, nh);
+      }
+      const gal = this.img.galaxy;
+      if (gal) {
+        const gw = 900, span = gw + W + 600;
+        const x = W + 300 - ((this.bgX * 0.05 + 700) % span);
+        c.globalAlpha = 0.85 + 0.15 * lv[0];
+        c.drawImage(gal, x, 60, gw, gw * gal.height / gal.width);
+      }
+      c.globalAlpha = 1;
+      c.globalCompositeOperation = 'source-over';
+      // Planet links unten, fast statisch
+      const pl = this.img.planet;
+      if (pl) {
+        const pw = 1500, x = -520 - ((this.bgX * 0.012) % 2600);
+        c.drawImage(pl, x, 380, pw, pw * pl.height / pl.width);
+      } else {
+        const gr = c.createRadialGradient(-100, 1400, 500, -100, 1400, 1000);
+        gr.addColorStop(0, '#0a1a38'); gr.addColorStop(0.92, '#0d2a5e'); gr.addColorStop(1, 'rgba(60,140,255,0)');
+        c.fillStyle = gr;
+        c.beginPath(); c.arc(-100, 1400, 1000, 0, TAU); c.fill();
+      }
+      // Sterne, bei Drops als Warp-Streifen
+      c.globalCompositeOperation = 'lighter';
+      const t = performance.now() / 1000, streak = this.warp;
+      for (const layer of this.stars) {
+        for (const s of layer) {
+          s.x -= speed * s.sp * dt;
+          if (s.x < -60) { s.x += W + 120; s.y = Math.random() * H; }
+          const a = s.b * (0.6 + 0.4 * Math.sin(t * 2 + s.tw)) * (0.7 + 0.5 * lv[2]);
+          c.fillStyle = `rgba(200,220,255,${clamp(a, 0, 1)})`;
+          const len = s.s + streak * speed * s.sp * 0.08;
+          c.fillRect(s.x, s.y, len, s.s);
+        }
+      }
+      c.globalCompositeOperation = 'source-over';
+    }
+
+    foreground(dt, speed) {
+      if (!this.darkRock) return;
+      const c = this.c;
+      for (const d of this.decor) {
+        d.x -= speed * d.sp * dt;
+        d.rot += d.spin * dt;
+        if (d.x < -d.s) { d.x = W + d.s + Math.random() * 1200; d.y = Math.random() < 0.5 ? 990 + Math.random() * 110 : -90 + Math.random() * 110; }
+        c.save();
+        c.translate(d.x, d.y);
+        c.rotate(d.rot);
+        c.globalAlpha = 0.9;
+        c.drawImage(this.darkRock, -d.s / 2, -d.s / 2, d.s, d.s * this.darkRock.height / this.darkRock.width);
+        c.restore();
+      }
+    }
+
+    vignette() {
+      const c = this.c;
+      if (!this.vig) {
+        const v = document.createElement('canvas');
+        v.width = W; v.height = H;
+        const g = v.getContext('2d');
+        const gr = g.createRadialGradient(W / 2, H / 2, H * 0.45, W / 2, H / 2, H * 1.05);
+        gr.addColorStop(0, 'rgba(0,0,0,0)');
+        gr.addColorStop(1, 'rgba(0,0,0,0.6)');
+        g.fillStyle = gr;
+        g.fillRect(0, 0, W, H);
+        this.vig = v;
+      }
+      c.drawImage(this.vig, 0, 0);
+    }
+
+    world(g, st) {
+      const c = this.c, beat = st.beat, songT = st.songT;
+      const pulse = Math.exp(-(((beat % 1) + 1) % 1) * 5);
+
+      // Laser-Tore: Warnlinie einen Beat lang, dann der Strahl
+      for (const bm of g.beams) {
+        if (songT < bm.tFire) {
+          const k = clamp((songT - bm.tWarn) / (bm.tFire - bm.tWarn), 0, 1);
+          c.globalCompositeOperation = 'lighter';
+          c.fillStyle = `rgba(90,180,255,${0.15 + 0.5 * k * (0.5 + 0.5 * Math.sin(songT * 60))})`;
+          c.fillRect(0, bm.yWarn - 1.5, bm.x, 3);
+          c.globalCompositeOperation = 'source-over';
+        }
+      }
+
+      for (const it of g.items) {
+        if (!this.spr('powerup', it.x, it.y, 58, { rot: Math.sin(it.t * 2) * 0.2 })) {
+          this.dot(this.glows.blue, it.x, it.y, 34);
+        }
+        c.globalCompositeOperation = 'lighter';
+        this.dot(this.glows.blue, it.x, it.y, 46 + 8 * Math.sin(it.t * 8), 0.5);
+        c.globalCompositeOperation = 'source-over';
+      }
+
+      // Gegner – pumpen auf jedem Beat
+      for (const e of g.enemies) {
+        if (!e.active || e.dead) continue;
+        const k = e.k, sc = (e.scale || 1) * (1 + (e.kind === 'boss' ? 0.02 : 0.07) * pulse);
+        const ok = this.spr(k.sprite, e.x, e.y, k.h * sc, { rot: e.rot, flip: k.flip, flash: e.flash > 0 });
+        if (!ok) {
+          c.fillStyle = e.flash > 0 ? '#fff' : { blue: '#5ab8ff', orange: '#ff9a3c', fighter: '#9aa', rock: '#555', cannon: '#79a', boss: '#a4c' }[e.kind];
+          c.beginPath(); c.ellipse(e.x, e.y, k.rx * (e.scale || 1), k.ry * (e.scale || 1), 0, 0, TAU); c.fill();
+        }
+        // Kern-Glühen im Takt, Aufladen vor einem Schuss
+        c.globalCompositeOperation = 'lighter';
+        if (e.kind === 'blue' || e.kind === 'orange') {
+          this.dot(e.kind === 'blue' ? this.glows.blue : this.glows.orange, e.x, e.y, 30 + 26 * pulse, 0.6);
+        }
+        const tc = e.nextShotT - songT;
+        if (tc > -0.05 && tc < 0.35) {
+          const q = 1 - clamp(tc / 0.35, 0, 1);
+          const gl = e.kind === 'orange' ? this.glows.orange : e.kind === 'boss' ? this.glows.pink : this.glows.violet;
+          this.dot(gl, e.x - k.rx * 0.6, e.y, 10 + 30 * q, q);
+        }
+        if (e.kind === 'boss') this.dot(this.glows.fire, e.x - 20, e.y + 10, 90 + 50 * pulse, 0.7);
+        c.globalCompositeOperation = 'source-over';
+      }
+
+      // Spielerschüsse
+      c.globalCompositeOperation = 'lighter';
+      for (const s of g.shots) {
+        const a = Math.atan2(s.vy, s.vx);
+        c.save();
+        c.translate(s.x, s.y);
+        c.rotate(a);
+        c.fillStyle = s.big ? 'rgba(120,230,255,0.9)' : 'rgba(125,255,106,0.85)';
+        c.fillRect(-30, s.big ? -4 : -2.5, 40, s.big ? 8 : 5);
+        c.fillStyle = '#ffffff';
+        c.fillRect(-18, -1, 26, 2);
+        c.restore();
+      }
+      c.globalCompositeOperation = 'source-over';
+
+      this.drawPlayer(g, st);
+
+      // Gegnergeschosse
+      c.globalCompositeOperation = 'lighter';
+      for (const b of g.bullets) {
+        const gl = b.kind === 'big' ? this.glows.pink : this.glows.violet;
+        this.dot(gl, b.x, b.y, b.r * 2.6);
+        this.dot(this.glows.white, b.x, b.y, b.r * 0.9);
+      }
+      // Effekte
+      for (const f of g.fx) {
+        if (f.delay > 0) continue;
+        const k = f.t / f.life;
+        if (f.type === 'boom') {
+          const s = f.size * (0.4 + 0.9 * Math.sqrt(k));
+          if (!this.spr('explosion', f.x, f.y, s * 2, { rot: f.rot + k * 0.6, alpha: 1 - k, add: true })) {
+            this.dot(this.glows.fire, f.x, f.y, s, 1 - k);
+          }
+        } else if (f.type === 'spark') {
+          c.fillStyle = f.color;
+          c.globalAlpha = 1 - k;
+          c.fillRect(f.x, f.y, f.size * 2, f.size);
+          c.globalAlpha = 1;
+        } else if (f.type === 'muzzle') {
+          this.dot(f.color === '#ff9a3c' ? this.glows.orange : f.color === '#6fd0ff' ? this.glows.blue : f.color === '#ff5ad2' ? this.glows.pink : this.glows.violet,
+            f.x, f.y, f.size * (1 - k * 0.5), 1 - k);
+        }
+      }
+      // Strahlen der Laser-Tore
+      for (const bm of g.beams) {
+        if (songT < bm.tFire || bm.y === null) continue;
+        const k = clamp((songT - bm.tFire) / (bm.tEnd - bm.tFire), 0, 1);
+        const w = 44 * (1 - k * 0.6);
+        const gr = c.createLinearGradient(0, bm.y - w, 0, bm.y + w);
+        gr.addColorStop(0, 'rgba(60,140,255,0)'); gr.addColorStop(0.5, 'rgba(140,210,255,0.95)'); gr.addColorStop(1, 'rgba(60,140,255,0)');
+        c.fillStyle = gr;
+        c.fillRect(0, bm.y - w, bm.x, w * 2);
+        c.fillStyle = 'rgba(255,255,255,0.9)';
+        c.fillRect(0, bm.y - 3, bm.x, 6);
+        this.dot(this.glows.blue, bm.x, bm.y, 70, 1 - k * 0.5);
+      }
+      c.globalCompositeOperation = 'source-over';
+
+      // Punkte
+      c.textAlign = 'center';
+      for (const p of g.popups) {
+        c.globalAlpha = 1 - p.t;
+        c.font = `700 ${p.sync ? 30 : 22}px ${FONT}`;
+        c.fillStyle = p.sync ? '#9dff8a' : '#dff6ff';
+        c.fillText(p.text, p.x, p.y - p.t * 40);
+      }
+      c.globalAlpha = 1;
+
+      // Boss-Energie
+      const boss = g.bossRef;
+      if (boss && boss.active) {
+        const k = clamp(boss.hp / boss.maxHp, 0, 1);
+        c.fillStyle = 'rgba(20,30,60,0.7)';
+        c.fillRect(W / 2 - 400, 30, 800, 14);
+        c.fillStyle = '#ff5ad2';
+        c.fillRect(W / 2 - 400, 30, 800 * k, 14);
+        c.strokeStyle = '#9fe3ff';
+        c.strokeRect(W / 2 - 400, 30, 800, 14);
+      }
+    }
+
+    drawPlayer(g, st) {
+      const c = this.c, p = g.player, d = g.drone;
+      if (!p.alive) return;
+      const blink = p.inv > 0 && Math.floor(p.inv * 12) % 2 === 0;
+      // HYPER-Strahl
+      if (g.hyperOn) {
+        const k = 0.8 + 0.2 * Math.sin(performance.now() / 30);
+        c.globalCompositeOperation = 'lighter';
+        const gr = c.createLinearGradient(0, p.y - 70, 0, p.y + 70);
+        gr.addColorStop(0, 'rgba(90,255,160,0)'); gr.addColorStop(0.5, `rgba(180,255,220,${k})`); gr.addColorStop(1, 'rgba(90,255,160,0)');
+        c.fillStyle = gr;
+        c.fillRect(p.x + 40, p.y - 70, W, 140);
+        c.fillStyle = '#ffffff';
+        c.fillRect(p.x + 40, p.y - 8, W, 16);
+        c.globalCompositeOperation = 'source-over';
+      }
+      // Triebwerk
+      c.globalCompositeOperation = 'lighter';
+      this.dot(this.glows.blue, p.x - 62, p.y + 2, 28 + Math.random() * 10, 0.9);
+      if (g.muzzle > 0) this.dot(this.glows.green, p.x + 64, p.y, 26, 0.9);
+      c.globalCompositeOperation = 'source-over';
+      if (!blink) {
+        if (!this.spr('player', p.x, p.y, 64, { rot: p.tilt * 0.12 })) {
+          c.fillStyle = '#e8f0ff';
+          c.beginPath(); c.moveTo(p.x + 60, p.y); c.lineTo(p.x - 50, p.y - 26); c.lineTo(p.x - 40, p.y); c.lineTo(p.x - 50, p.y + 26); c.fill();
+        }
+      }
+      // Drohne
+      const on = g.droneOnline;
+      c.globalCompositeOperation = 'lighter';
+      if (on) this.dot(this.glows.blue, d.x, d.y, 34, 0.5);
+      c.globalCompositeOperation = 'source-over';
+      if (!this.spr('drone', d.x, d.y, 50, { alpha: on ? 1 : 0.25, rot: g.time * (on ? 0.5 : 0) })) {
+        c.fillStyle = on ? '#cfe8ff' : '#345';
+        c.beginPath(); c.arc(d.x, d.y, 20, 0, TAU); c.fill();
+      }
+    }
+
+    // ------------------------------------------------------------------ HUD
+
+    gauge(x, y, w, k, mirror, letter, icon, label, ready) {
+      const c = this.c;
+      c.save();
+      c.translate(x, y);
+      if (mirror) c.scale(-1, 1);
+      c.strokeStyle = '#8fe0ff';
+      c.lineWidth = 3;
+      c.shadowColor = '#3fb4ff';
+      c.shadowBlur = 12;
+      c.beginPath();
+      c.moveTo(0, 40); c.lineTo(w - 60, 40); c.lineTo(w - 36, 16); c.lineTo(w, 16); c.lineTo(w, 72);
+      c.lineTo(w - 36, 72); c.lineTo(w - 60, 60); c.lineTo(40, 60); c.lineTo(20, 76); c.lineTo(-40, 76);
+      c.stroke();
+      c.shadowBlur = 0;
+      const n = 22, sw = (w - 120) / n;
+      for (let i = 0; i < n; i++) {
+        const on = i / n < k;
+        c.fillStyle = on ? (ready ? (Math.floor(performance.now() / 150) % 2 ? '#ffffff' : '#9dff8a') : '#bfeeff') : 'rgba(80,140,190,0.25)';
+        c.fillRect(20 + i * sw, 45, sw - 4, 11);
+      }
+      c.restore();
+      if (icon) this.spr(icon, x + (mirror ? -1 : 1) * (w - 22), y + 44, 30, { flip: mirror && icon === 'player' });
+      c.font = `700 52px ${FONT}`;
+      c.textAlign = 'center';
+      c.fillStyle = '#dff6ff';
+      c.shadowColor = '#3fb4ff';
+      c.shadowBlur = 14;
+      c.fillText(letter, x + (mirror ? -1 : 1) * (w + 50), y + 68);
+      c.shadowBlur = 0;
+      c.font = `600 14px ${FONT}`;
+      c.fillStyle = 'rgba(190,230,255,0.7)';
+      c.fillText(label, x + (mirror ? -1 : 1) * (w / 2 - 20), y + 100);
+    }
+
+    hud(g, st) {
+      const c = this.c, y = 950;
+      this.gauge(110, y, 440, g.charge, false, 'ABCD'[g.weapon - 1], 'player', 'HYPER  [X]', g.charge >= 1);
+      this.gauge(W - 110, y, 440, g.droneE, true, g.droneMode ? 'B' : 'A', 'drone', 'DRONE  [C]', false);
+      c.textAlign = 'center';
+      c.font = `700 62px ${FONT}`;
+      c.fillStyle = '#e8fbff';
+      c.shadowColor = '#3fb4ff';
+      c.shadowBlur = 16;
+      c.fillText(String(Math.floor(g.score)).padStart(8, '0'), W / 2, y + 48);
+      c.shadowBlur = 0;
+      c.strokeStyle = 'rgba(143,224,255,0.8)';
+      c.lineWidth = 2;
+      c.beginPath(); c.moveTo(W / 2 - 150, y + 64); c.lineTo(W / 2 + 150, y + 64); c.stroke();
+      c.font = `600 24px ${FONT}`;
+      c.fillStyle = '#cdefff';
+      c.fillText(st.songName.toUpperCase(), W / 2, y + 98);
+      // Leben links, Multiplikator rechts
+      for (let i = 0; i < g.lives; i++) this.spr('player', W / 2 - 230 - i * 50, y + 90, 22);
+      if (!this.img.player) { c.textAlign = 'right'; c.fillText('x' + g.lives, W / 2 - 200, y + 98); }
+      c.textAlign = 'left';
+      c.fillStyle = g.mult > 1 ? '#9dff8a' : 'rgba(205,239,255,0.5)';
+      c.fillText('x' + g.mult, W / 2 + 200, y + 98);
+      // Songfortschritt
+      const k = clamp(st.songT / g.L.duration, 0, 1);
+      c.fillStyle = 'rgba(143,224,255,0.25)';
+      c.fillRect(W / 2 - 150, y + 110, 300, 3);
+      c.fillStyle = '#8fe0ff';
+      c.fillRect(W / 2 - 150, y + 110, 300 * k, 3);
+    }
+
+    banner(g, st) {
+      const c = this.c, b = g.banner;
+      const a = clamp(Math.min(st.songT - b.t0, b.t1 - st.songT) * 3, 0, 1);
+      const blink = b.text === 'WARNING' ? 0.6 + 0.4 * Math.sin(st.beat * Math.PI * 2) : 1;
+      c.globalAlpha = a * blink;
+      c.textAlign = 'center';
+      c.font = `900 110px ${FONT}`;
+      c.fillStyle = b.text === 'WARNING' ? '#ff5a7a' : '#e8fbff';
+      c.shadowColor = b.text === 'WARNING' ? '#ff2050' : '#3fb4ff';
+      c.shadowBlur = 30;
+      c.fillText(b.text, W / 2, H / 2 - 20);
+      c.font = `600 30px ${FONT}`;
+      c.fillText(b.sub, W / 2, H / 2 + 40);
+      c.shadowBlur = 0;
+      c.globalAlpha = 1;
+    }
+
+    // ------------------------------------------------------------------ Bildschirme
+
+    title(st) {
+      const c = this.c;
+      c.textAlign = 'center';
+      c.font = `900 150px ${FONT}`;
+      c.fillStyle = '#e8fbff';
+      c.shadowColor = '#3fb4ff';
+      c.shadowBlur = 40 + 20 * (st.levels ? st.levels[0] : 0);
+      c.fillText('HYPERSENSE', W / 2, 400);
+      c.shadowBlur = 0;
+      c.font = `600 34px ${FONT}`;
+      c.fillStyle = '#9fe3ff';
+      c.fillText(st.subtitle, W / 2, 480);
+      if (st.pick) {
+        const k = 0.5 + 0.5 * Math.sin(performance.now() / 300);
+        c.fillStyle = `rgba(159,227,255,${0.5 + 0.5 * k})`;
+        for (const s of [-1, 1]) {
+          const x = W / 2 + s * 520;
+          c.beginPath(); c.moveTo(x + s * 18, 468); c.lineTo(x - s * 6, 452); c.lineTo(x - s * 6, 484); c.fill();
+        }
+      }
+      if (st.hi) {
+        c.font = `400 22px ${FONT}`;
+        c.fillStyle = 'rgba(205,239,255,0.7)';
+        c.fillText('HIGH SCORE  ' + String(st.hi).padStart(8, '0'), W / 2, 530);
+      }
+      c.font = `600 30px ${FONT}`;
+      c.fillStyle = st.ready ? `rgba(232,251,255,${0.55 + 0.45 * Math.sin(performance.now() / 250)})` : '#cdefff';
+      c.fillText(st.status, W / 2, 640);
+      c.font = `400 22px ${FONT}`;
+      c.fillStyle = 'rgba(205,239,255,0.7)';
+      const help = ['LEFT / RIGHT  choose song      ENTER  start',
+        'ARROWS / WASD  fly      SHIFT  slow      SPACE / J  fire',
+        'X  HYPER beam      C  drone mode      P / ESC  pause      F  fullscreen'];
+      help.forEach((l, i) => c.fillText(l, W / 2, 780 + i * 38));
+    }
+
+    results(g, st) {
+      const c = this.c;
+      c.fillStyle = 'rgba(2,3,10,0.6)';
+      c.fillRect(0, 0, W, H);
+      c.textAlign = 'center';
+      c.font = `900 110px ${FONT}`;
+      c.fillStyle = g.over ? '#ff5a7a' : '#e8fbff';
+      c.shadowColor = g.over ? '#ff2050' : '#3fb4ff';
+      c.shadowBlur = 30;
+      c.fillText(g.over ? 'GAME OVER' : 'STAGE CLEAR', W / 2, 300);
+      c.shadowBlur = 0;
+      c.font = `600 36px ${FONT}`;
+      c.fillStyle = '#dff6ff';
+      const rows = [
+        ['SCORE', String(Math.floor(g.score)).padStart(8, '0')],
+        ['KILLS', `${g.kills} / ${g.spawned}`],
+        ['SYNC KILLS', String(g.syncKills)],
+        ['MAX CHAIN', String(g.maxChain)],
+        ['HIGH SCORE', String(st.hi).padStart(8, '0')],
+      ];
+      rows.forEach(([k, v], i) => {
+        c.textAlign = 'right'; c.fillText(k, W / 2 - 30, 430 + i * 64);
+        c.textAlign = 'left'; c.fillText(v, W / 2 + 30, 430 + i * 64);
+      });
+      c.textAlign = 'center';
+      c.font = `600 30px ${FONT}`;
+      c.fillStyle = `rgba(232,251,255,${0.55 + 0.45 * Math.sin(performance.now() / 250)})`;
+      c.fillText('PRESS ENTER', W / 2, 850);
+    }
+
+    paused() {
+      const c = this.c;
+      c.fillStyle = 'rgba(2,3,10,0.55)';
+      c.fillRect(0, 0, W, H);
+      c.textAlign = 'center';
+      c.font = `900 90px ${FONT}`;
+      c.fillStyle = '#e8fbff';
+      c.fillText('PAUSE', W / 2, H / 2);
+    }
+  }
+
+  window.Renderer = Renderer;
+})();
