@@ -45,6 +45,28 @@ mit `?song=Name` einen bestimmten.
   Jede hebt die Waffe eine Stufe, auf D gibt es stattdessen Punkte und HYPER-Ladung.
 - Ein Song ist eine Stage. Auf den stärksten Drop folgt der Boss, der **Bass-Kern**: Er feuert Ringe auf
   den Takt-Einsen, Fächer auf betonten Noten und Zwillingsschüsse auf den übrigen.
+- **Die Welt scrollt im Takt** (110 Pixel pro Beat). In mittellauten 8-Takt-Blöcken fliegt man durch
+  **Korridore einer Raumstation**: Rumpf oben und unten mit wechselnder Höhe, Berührung ist tödlich,
+  und Geschütztürme sitzen darauf.
+
+### Gegner
+
+| Gegner | Verhalten |
+|---|---|
+| Blaue / orange Drohne | Ketten und V-Formationen, die sich auf jeder Eins versetzen |
+| Jäger | Sturzflug von oben und unten |
+| Dart | macht auf jedem Beat einen Satz auf den Spieler zu |
+| Mine | hängt in der Welt, blinkt immer schneller und platzt auf einer Eins in 12 Kugeln |
+| Geschützturm | auf dem Stationsrumpf, feuert Nadel-Salven |
+| Serpent | Kopf und 10 Segmente auf einer Wellenbahn, der Puls läuft den Körper entlang |
+| Splitter | Kristallkugel, feuert ein Kreuz und zerfällt in 5 Scherben |
+| Träger | hält vier Takte und spuckt alle zwei Beats einen Dart aus |
+| Laser-Tor | zwei Kanonen, die anpeilen, einen Beat warnen und auf der Eins feuern |
+| Asteroiden | in ruhigen Passagen |
+| Bass-Kern | Boss am stärksten Drop |
+
+In lauten Passagen kommt jeden Takt eine Welle, sonst alle zwei Takte. Auf Drops blitzt und bebt es
+acht Beats lang auf jedem Schlag.
 
 ### Wie der Takt die Gegner steuert (`public/js/level.js`, `public/js/game.js`)
 
@@ -79,6 +101,27 @@ Welche Variante genommen wird, steht oben in `tools/key_assets.py`. Sprites werd
 und freigestellt. Nebel, Galaxie und Explosion werden auf Schwarz gerendert und additiv gezeichnet,
 der Planet bekommt eine Scheibenmaske.
 
+## Sounds
+
+Die Explosionen stammen aus der Bluezone-Library unter `D:\samples\ExplosionSounds` (BC0214, BC0200):
+
+```bash
+python tools/scan_sfx.py D:/samples/ExplosionSounds > art/sfx_scan.tsv   # Länge, Anschlag, Bassanteil messen
+python tools/make_sfx.py                                                 # gewählte Samples -> public/sfx/
+```
+
+Welche Samples genommen werden, steht oben in `tools/make_sfx.py`. Mischung (`public/js/audio.js`):
+
+- **klein / mittel / groß:** je nach Gegner, reihum und leicht verstimmt. Darüber liegen ein harter
+  Anschlag und ein Sub-Stoß (`_punch`).
+- **Asteroiden:** zusätzlich eine Geröll-Schicht.
+- **Boss:** Ein Whoosh läuft vorher an. Sein Höhepunkt und die Riesenexplosion fallen genau auf den Beat.
+- **Mischpult:** Alle Effekte laufen über einen Kompressor mit Aufholverstärkung, am Master sitzt ein Limiter.
+  Mittlere und große Explosionen drücken die Musik kurz weg (Ducking).
+
+Die Bluezone-Samples sind lizenziert. Vor einem öffentlichen Push die Lizenz prüfen: Die Weitergabe
+einzelner Samples ist bei solchen Libraries meist nicht erlaubt.
+
 ## Projektstruktur
 
 ```
@@ -90,6 +133,7 @@ public/js/game.js      Spiellogik
 public/js/render.js    Darstellung und HUD
 public/js/main.js      Laden, Eingabe, Ablauf
 public/assets/         Sprites
+public/sfx/            Explosions-Samples (aus tools/make_sfx.py)
 tools/                 Asset-Pipeline (ComfyUI)
 music/                 Songs
 ```

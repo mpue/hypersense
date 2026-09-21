@@ -1,0 +1,57 @@
+{
+ "small1": {
+  "file": "small1.wav",
+  "peak": 0.007,
+  "len": 1.1
+ },
+ "small2": {
+  "file": "small2.wav",
+  "peak": 0.018,
+  "len": 1.1
+ },
+ "small3": {
+  "file": "small3.wav",
+  "peak": 0.056,
+  "len": 1.1
+ },
+ "medium1": {
+  "file": "medium1.wav",
+  "peak": 0.016,
+  "len": 2.0
+ },
+ "medium2": {
+  "file": "medium2.wav",
+  "peak": 0.087,
+  "len": 2.0
+ },
+ "medium3": {
+  "file": "medium3.wav",
+  "peak": 0.01,
+  "len": 2.0
+ },
+ "big1": {
+  "file": "big1.wav",
+  "peak": 0.002,
+  "len": 3.0
+ },
+ "big2": {
+  "file": "big2.wav",
+  "peak": 0.003,
+  "len": 3.0
+ },
+ "huge": {
+  "file": "huge.wav",
+  "peak": 0.036,
+  "len": 6.0
+ },
+ "whoosh": {
+  "file": "whoosh.wav",
+  "peak": 0.638,
+  "len": 5.3
+ },
+ "debris": {
+  "file": "debris.wav",
+  "peak": 0.26,
+  "len": 1.2
+ }
+}

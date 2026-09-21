@@ -1,6 +1,7 @@
 node_modules/
 .env
 .claude/
+__pycache__/
 
 # Roh-Renders aus ComfyUI (tools/gen_assets.py erzeugt sie neu), Kontaktbogen und Log
 art/

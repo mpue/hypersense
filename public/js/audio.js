@@ -14,20 +14,34 @@
       this.songStart = 0;      // Kontextzeit, zu der Songsekunde 0 erklingt
       this.offsetMs = 0;       // Latenz-Kalibrierung
       this._anchor = null;
+      this.samples = {};
+      this.sampleMeta = {};
+      this._round = {};
     }
 
     ensure() {
       if (!this.ctx) {
         const ctx = this.ctx = new (window.AudioContext || window.webkitAudioContext)({ latencyHint: 'interactive' });
+        // Master mit Limiter: große Explosionen dürfen laut sein, aber nicht übersteuern
         this.master = ctx.createGain();
         this.master.gain.value = 0.9;
-        this.master.connect(ctx.destination);
+        this.limiter = ctx.createDynamicsCompressor();
+        this.limiter.threshold.value = -2;
+        this.limiter.knee.value = 0;
+        this.limiter.ratio.value = 20;
+        this.limiter.attack.value = 0.001;
+        this.limiter.release.value = 0.15;
+        this.master.connect(this.limiter);
+        this.limiter.connect(ctx.destination);
 
+        // Musikpfad: Gain -> Ducking (Explosionen drücken die Musik kurz weg) -> Tiefpass -> Master
         this.musicGain = ctx.createGain();
+        this.duckGain = ctx.createGain();
         this.lowpass = ctx.createBiquadFilter();
         this.lowpass.type = 'lowpass';
         this.lowpass.frequency.value = 20000;
-        this.musicGain.connect(this.lowpass);
+        this.musicGain.connect(this.duckGain);
+        this.duckGain.connect(this.lowpass);
         this.lowpass.connect(this.master);
 
         this.analyser = ctx.createAnalyser();
@@ -38,12 +52,24 @@
         this.bandPeak = [0.05, 0.05, 0.05];
         this.bandFloor = [0, 0, 0];
 
+        // Effekte über einen Kompressor: macht die Explosionen dicht und druckvoll
+        this.sfxComp = ctx.createDynamicsCompressor();
+        this.sfxComp.threshold.value = -18;
+        this.sfxComp.knee.value = 6;
+        this.sfxComp.ratio.value = 4;
+        this.sfxComp.attack.value = 0.004;   // Anschlag durchlassen
+        this.sfxComp.release.value = 0.2;
+        this.sfxOut = ctx.createGain();
+        this.sfxOut.gain.value = 1.6;        // Aufholverstärkung
+        this.sfxComp.connect(this.sfxOut);
+        this.sfxOut.connect(this.master);
+
         this.enemyBus = ctx.createGain();
-        this.enemyBus.gain.value = 0.45;
-        this.enemyBus.connect(this.master);
+        this.enemyBus.gain.value = 0.55;
+        this.enemyBus.connect(this.sfxComp);
         this.playerBus = ctx.createGain();
-        this.playerBus.gain.value = 0.35;
-        this.playerBus.connect(this.master);
+        this.playerBus.gain.value = 0.4;
+        this.playerBus.connect(this.sfxComp);
         this.noise = this._makeNoise();
       }
       if (this.ctx.state === 'suspended') this.ctx.resume();
@@ -52,6 +78,20 @@
 
     decode(arrayBuffer) {
       return this.ensure().decodeAudioData(arrayBuffer);
+    }
+
+    // Explosions-Samples (public/sfx, gebaut von tools/make_sfx.py). Fehlen sie, bleibt es beim Synth.
+    async loadSamples(base = 'sfx/') {
+      try {
+        const meta = await fetch(base + 'sfx.json').then(r => r.json());
+        await Promise.all(Object.entries(meta).map(async ([name, m]) => {
+          const data = await fetch(base + m.file).then(r => r.arrayBuffer());
+          this.samples[name] = await this.decode(data);
+          this.sampleMeta[name] = m;
+        }));
+      } catch (e) {
+        console.warn('SFX samples not loaded', e);
+      }
     }
 
     // ---------- Uhr ----------
@@ -189,6 +229,41 @@
       s.start(t, Math.random() * 0.5); s.stop(t + dur + 0.02);
     }
 
+    // Sample abspielen. Liegt "when" schon in der Vergangenheit, wird entsprechend weiter hinten eingestiegen.
+    _sample(bus, name, when, gain = 1, rate = 1) {
+      const buf = this.samples[name];
+      if (!buf) return false;
+      const ctx = this.ctx, s = ctx.createBufferSource(), g = ctx.createGain();
+      s.buffer = buf;
+      s.playbackRate.value = rate;
+      g.gain.value = gain;
+      s.connect(g); g.connect(bus);
+      const late = ctx.currentTime - when;
+      if (late > 0) { if (late * rate >= buf.duration) return false; s.start(ctx.currentTime, late * rate); }
+      else s.start(when);
+      return true;
+    }
+
+    // Reihum eines von mehreren Varianten-Samples (small1..3), leicht verstimmt gegen Monotonie
+    _variant(bus, base, n, when, gain) {
+      const i = this._round[base] = ((this._round[base] || 0) + 1) % n;
+      return this._sample(bus, base + (i + 1), when, gain, 0.92 + Math.random() * 0.16);
+    }
+
+    // Musik kurz wegdrücken – lässt Explosionen größer wirken
+    duck(when, depth, dur) {
+      const g = this.duckGain.gain, t = Math.max(this.ctx.currentTime, when);
+      g.cancelScheduledValues(t);
+      g.setTargetAtTime(1 - depth, t, 0.01);
+      g.setTargetAtTime(1, t + 0.05, dur / 3);
+    }
+
+    // Harter Anschlag + Sub-Stoß, über das Sample gelegt: der "Punch" im Arcade-Sinn
+    _punch(bus, when, size) {
+      this._noise(bus, 0.05 + 0.03 * size, 2400, 0.35 + 0.1 * size, when, 'highpass', 0.7);
+      this._tone(bus, 95 + 20 / size, 0.18 + 0.12 * size, 'sine', 0.55 + 0.15 * size, when, 32);
+    }
+
     // ---------- Gegner (auf Songzeit terminiert) ----------
 
     // Gegnerschuss auf einer Note. strong = betonte Note (Spike/Downbeat)
@@ -203,12 +278,20 @@
       }
     }
     // Explosion eines Gegners – quantisiert auf die nächste Sechzehntel (der Aufrufer rechnet den Zeitpunkt aus)
-    enemyBoom(songT, size) {
+    // size: 1 = klein, 1.2–2.4 = mittel, ab 2.5 = groß. rock = Asteroid (mit Geröll-Schicht)
+    enemyBoom(songT, size, rock = false) {
       if (!this.ctx) return;
-      const t = this.atSong(songT);
-      const big = size > 1;
-      this._noise(this.enemyBus, big ? 0.7 : 0.28, big ? 900 : 1600, big ? 0.55 : 0.32, t, 'lowpass', 0.7, 120);
-      this._tone(this.enemyBus, big ? 120 : 190, big ? 0.5 : 0.18, 'sine', big ? 0.5 : 0.3, t, 40);
+      const t = this.atSong(songT), bus = this.enemyBus;
+      let ok;
+      if (size < 1.2) ok = this._variant(bus, 'small', 3, t, 0.9);
+      else if (size < 2.5) { ok = this._variant(bus, 'medium', 3, t, 1); this.duck(t, 0.25, 0.35); }
+      else { ok = this._sample(bus, 'big' + (1 + Math.floor(Math.random() * 2)), t, 1); this.duck(t, 0.45, 0.8); }
+      if (rock) this._sample(bus, 'debris', t, 0.7, 0.9 + Math.random() * 0.2);
+      if (ok) this._punch(bus, t, Math.min(size, 3));
+      else {                                   // ohne Samples: Synth
+        this._noise(bus, size > 1 ? 0.7 : 0.28, size > 1 ? 900 : 1600, size > 1 ? 0.55 : 0.32, t, 'lowpass', 0.7, 120);
+        this._tone(bus, size > 1 ? 120 : 190, size > 1 ? 0.5 : 0.18, 'sine', size > 1 ? 0.5 : 0.3, t, 40);
+      }
     }
     beamWarn(songT) {
       if (!this.ctx) return;
@@ -225,11 +308,20 @@
       const t = this.atSong(songT);
       for (let k = 0; k < 4; k++) this._tone(this.enemyBus, k % 2 ? 440 : 330, 0.2, 'square', 0.12, t + k * 0.22);
     }
+    // Der Whoosh läuft vorher an, sein Höhepunkt und die Riesenexplosion fallen genau auf songT
     bossDown(songT) {
       if (!this.ctx) return;
-      const t = this.atSong(songT);
-      this._noise(this.enemyBus, 2.2, 1200, 0.7, t, 'lowpass', 0.7, 60);
-      this._tone(this.enemyBus, 90, 1.8, 'sine', 0.6, t, 30);
+      const t = this.atSong(songT), bus = this.enemyBus;
+      const pk = this.sampleMeta.whoosh ? this.sampleMeta.whoosh.peak : 0;
+      this._sample(bus, 'whoosh', t - pk, 0.9);
+      if (this._sample(bus, 'huge', t, 1.2)) {
+        this._sample(bus, 'big1', t + 0.45, 0.7, 0.85);
+        this._punch(bus, t, 3);
+        this.duck(t, 0.6, 1.8);
+      } else {
+        this._noise(bus, 2.2, 1200, 0.7, t, 'lowpass', 0.7, 60);
+        this._tone(bus, 90, 1.8, 'sine', 0.6, t, 30);
+      }
     }
 
     // ---------- Spieler (sofort) ----------
@@ -239,8 +331,14 @@
     }
     playerDie() {
       if (!this.ctx) return;
-      this._noise(this.playerBus, 1.1, 1500, 0.8, undefined, 'lowpass', 0.8, 80);
-      this._tone(this.playerBus, 300, 0.9, 'sawtooth', 0.25, undefined, 40);
+      const t = this.ctx.currentTime;
+      if (this._sample(this.playerBus, 'big2', t, 1.3)) this._punch(this.playerBus, t, 3);
+      else this._noise(this.playerBus, 1.1, 1500, 0.8, t, 'lowpass', 0.8, 80);
+      this._tone(this.playerBus, 300, 0.9, 'sawtooth', 0.25, t, 40);
+      this.duck(t, 0.5, 1.2);
+    }
+    droneLost() {
+      if (this.ctx) this._variant(this.playerBus, 'small', 3, this.ctx.currentTime, 0.9);
     }
     powerup() {
       if (!this.ctx) return;

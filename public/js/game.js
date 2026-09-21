@@ -24,11 +24,19 @@
   // rx/ry = Trefferellipse, h = Zeichenhöhe
   const KINDS = {
     blue:    { hp: 3,   rx: 34,  ry: 34, score: 100,   sprite: 'enemy_blue',    h: 84,  shoots: true, cool: 2,   size: 1 },
-    orange:  { hp: 7,   rx: 40,  ry: 40, score: 250,   sprite: 'enemy_orange',  h: 96,  shoots: true, cool: 1.5, size: 1, drop: 0.3 },
+    orange:  { hp: 7,   rx: 40,  ry: 40, score: 250,   sprite: 'enemy_orange',  h: 96,  shoots: true, cool: 1.5, size: 1.3, drop: 0.3 },
     fighter: { hp: 4,   rx: 50,  ry: 22, score: 200,   sprite: 'enemy_fighter', h: 62,  shoots: true, cool: 2,   size: 1 },
     rock:    { hp: 12,  rx: 52,  ry: 52, score: 150,   sprite: 'asteroid',      h: 120, shoots: false, size: 1.5 },
     cannon:  { hp: 45,  rx: 130, ry: 28, score: 800,   sprite: 'cannon',        h: 70,  shoots: false, size: 1.5, flip: true },
     boss:    { hp: 520, rx: 300, ry: 120, score: 20000, sprite: 'boss',         h: 440, shoots: true, cool: 0, size: 3 },
+    turret:  { hp: 6,   rx: 36,  ry: 30, score: 300,   sprite: 'turret',        h: 74,  shoots: true, cool: 1.5, size: 1.2 },
+    dart:    { hp: 2,   rx: 34,  ry: 14, score: 150,   sprite: 'dart',          h: 34,  shoots: false, size: 1 },
+    mine:    { hp: 4,   rx: 32,  ry: 32, score: 200,   sprite: 'mine',          h: 72,  shoots: false, size: 1.2 },
+    carrier: { hp: 80,  rx: 180, ry: 70, score: 3000,  sprite: 'carrier',       h: 210, shoots: true, cool: 1, size: 2.6 },
+    wormhead:{ hp: 12,  rx: 42,  ry: 36, score: 500,   sprite: 'worm_head',     h: 92,  shoots: true, cool: 1, size: 1.3 },
+    wormseg: { hp: 4,   rx: 30,  ry: 30, score: 80,    sprite: 'worm_segment',  h: 66,  shoots: false, size: 1 },
+    splitter:{ hp: 14,  rx: 50,  ry: 50, score: 400,   sprite: 'splitter',      h: 112, shoots: true, cool: 2, size: 1.3 },
+    shard:   { hp: 1,   rx: 22,  ry: 22, score: 60,    sprite: 'splitter',      h: 44,  shoots: false, size: 0.8 },
   };
 
   class Game {
@@ -76,6 +84,30 @@
       this.songT = 0;
       this.beat = 0;
       this.time = 0;
+      this.scroll = 0;               // Welt-x am linken Bildrand – wächst im Takt
+      this.hull = [];
+      this.lastBeatInt = null;
+    }
+
+    // Rumpf-Module, die gerade im Bild sind (sx = Bildschirm-x)
+    visibleHull() {
+      const out = [];
+      for (const m of this.L.terrain) {
+        const sx = m.wx - this.scroll;
+        if (sx > W) break;
+        if (sx + m.w >= 0) out.push({ ...m, sx });
+      }
+      return out;
+    }
+
+    // Steckt der Punkt (mit Radius r) im Rumpf?
+    inHull(x, y, r) {
+      const F = this.L.FLOOR_Y;
+      for (const m of this.hull) {
+        if (x + r < m.sx || x - r > m.sx + m.w) continue;
+        if (m.top ? y - r < m.h - 10 : y + r > F - m.h + 12) return true;
+      }
+      return false;
     }
 
     // Beim Einstieg mitten im Song (Test-Schalter): vergangene Wellen und Noten überspringen
@@ -95,6 +127,18 @@
       this.songT = songT;
       this.beat = map.beatOf(songT);
       this.time += dt;
+      this.scroll = this.L.scrollAt(this.beat);
+      this.hull = this.visibleHull();
+
+      // Drops: acht Beats lang blitzt und bebt es auf jedem Schlag
+      const bi = Math.floor(this.beat);
+      if (bi !== this.lastBeatInt) {
+        this.lastBeatInt = bi;
+        if (this.L.dropBeats.some(d => bi >= d && bi < d + 8)) {
+          this.flash = Math.max(this.flash, 0.28);
+          this.shake = Math.max(this.shake, 7);
+        }
+      }
 
       // Wellen 4 Beats vor ihrem Einsatz anlegen – die Gegner warten außerhalb, bis ihr Beat kommt
       while (this.waveIdx < this.L.waves.length && this.L.waves[this.waveIdx].b - 4 <= this.beat) {
@@ -171,11 +215,12 @@
           break;
         }
         case 'vee': {
-          const n = 5, cy = 300 + r() * 360;
+          // in lauten Passagen (neue Welle jeden Takt) kürzer halten, damit sich Formationen nicht stapeln
+          const n = 5, cy = 300 + r() * 360, hold = w.loud > 0.5 ? 8 : 16;
           for (let i = 0; i < n; i++) {
             const tx = 1180 + Math.abs(i - 2) * 120, ty = cy + (i - 2) * 125;
             this.addEnemy(i === 2 ? 'orange' : (r() < 0.5 ? 'orange' : 'blue'), w.b + Math.abs(i - 2) * 0.25, (e, u) => {
-              e.x = tx + (W + 150 - tx) * (1 - easeOut(u / 2)) - (u > 16 ? (u - 16) ** 2 * 45 : 0);
+              e.x = tx + (W + 150 - tx) * (1 - easeOut(u / 2)) - (u > hold ? (u - hold) ** 2 * 45 : 0);
               e.y = clamp(ty + 90 * Math.sin(barStep(u) * Math.PI / 2), 80, 880);
             });
           }
@@ -222,6 +267,83 @@
           });
           break;
         }
+        case 'darts': {
+          // Staffel, die auf jedem Beat einen Satz auf den Spieler macht
+          const n = 4 + Math.floor(r() * 3);
+          for (let i = 0; i < n; i++) {
+            const y0 = 150 + (i + 0.5) * (700 / n);
+            this.addEnemy('dart', w.b + i * 0.5, this.dartPath(W + 60, y0, 1500 - (i % 2) * 90));
+          }
+          break;
+        }
+        case 'mines': {
+          // Minen hängen fest in der Welt (scrollen mit) und zerplatzen auf einer Eins in einen Kugelring
+          const n = 3 + Math.floor(r() * 3), PX = this.L.PX_PER_BEAT;
+          for (let i = 0; i < n; i++) {
+            const wx = this.L.scrollAt(w.b + i * 3) + W + 80, y0 = 170 + r() * 620;
+            const reach = (wx - 1250) / PX;                           // Beat, an dem sie x=1250 erreicht
+            const boomB = Math.ceil((reach + 3 - map.downbeat) / 4) * 4 + map.downbeat;
+            this.addEnemy('mine', w.b - 4, (e, u) => {
+              e.x = e.wx - this.scroll;
+              e.y = y0 + 22 * Math.sin(u * Math.PI / 2);
+              e.rot = u * 0.4;
+            }, { wx, boomB });
+          }
+          break;
+        }
+        case 'turrets': {
+          // Geschütztürme auf dem Rumpf, abwechselnd Decke und Boden
+          const n = 3 + Math.floor(r() * 3), F = this.L.FLOOR_Y;
+          for (let i = 0; i < n; i++) {
+            const wx = this.L.scrollAt(w.b + i * 2.5) + W + 60;
+            let top = i % 2 === 0, h = this.L.hullAt(wx, top);
+            if (!h) { top = !top; h = this.L.hullAt(wx, top); }
+            if (!h) continue;
+            const y = top ? h + 22 : F - h - 22;
+            this.addEnemy('turret', w.b - 4, e => { e.x = e.wx - this.scroll; }, { wx, y, flipY: top });
+          }
+          break;
+        }
+        case 'worm': {
+          // Serpent: Kopf und Segmente auf derselben Bahn, jedes Segment eine Achtel später
+          const y0 = 260 + r() * 440, amp = 150 + r() * 80, sp = 210, segs = 10;
+          const path = (e, u) => {
+            e.x = W + 80 - u * sp;
+            e.y = y0 + amp * Math.sin(u * Math.PI / 4);
+            const dy = amp * Math.PI / 4 * Math.cos(u * Math.PI / 4);
+            e.rot = Math.atan2(dy, sp) * -1;
+          };
+          const g = { left: segs + 1 };
+          for (let i = segs; i >= 1; i--) this.addEnemy('wormseg', w.b + i * 0.3, path, { group: g, seg: i });
+          this.addEnemy('wormhead', w.b, path, { group: g });
+          break;
+        }
+        case 'splitter': {
+          const n = 2 + Math.floor(r() * 2);
+          for (let i = 0; i < n; i++) {
+            const y0 = 220 + r() * 560;
+            this.addEnemy('splitter', w.b + i * 2, (e, u) => {
+              e.x = W + 100 - u * 125;
+              e.y = y0 + 60 * Math.sin(barStep(u) * Math.PI / 2);
+              e.rot = u * 0.3;
+            });
+          }
+          break;
+        }
+        case 'carrier': {
+          // Träger: fährt ein, hält vier Takte und spuckt alle zwei Beats einen Dart aus
+          const y0 = 300 + r() * 360;
+          this.addEnemy('carrier', w.b, (e, u) => {
+            e.x = 1560 + 520 * (1 - easeOut(u / 4)) - (u > 20 ? (u - 20) ** 2 * 30 : 0);
+            e.y = y0 + 120 * Math.sin(barStep(u) * Math.PI / 2);
+            while (u >= e.nextSpawn && e.nextSpawn <= 18) {
+              const side = (e.nextSpawn / 2) % 2 ? -1 : 1;
+              this.addEnemy('dart', e.b0 + e.nextSpawn, this.dartPath(e.x - 150, e.y + side * 50, e.x - 320));
+              e.nextSpawn += 2;
+            }
+          }, { nextSpawn: 4 });
+          break;
+        }
         case 'boss': {
           const L = this.L, span = L.boss ? L.boss.b1 - L.boss.b0 : 32;
           this.banner = { text: 'WARNING', sub: 'BASS CORE APPROACHING', t0: this.songT, t1: map.timeOf(w.b) };
@@ -236,12 +358,35 @@
       }
     }
 
+    // Dart: fliegt auf holdX ein, macht dann auf jedem Beat einen Satz (erste 40 % des Beats) auf den
+    // Spieler zu, nach sechs Sätzen schießt er links aus dem Bild
+    dartPath(x0, y0, holdX) {
+      return (e, u) => {
+        if (u < 1.5) { e.x = x0 + (holdX - x0) * easeOut(u / 1.5); e.y = y0; return; }
+        const k = Math.floor(u - 1.5), f = u - 1.5 - k;
+        if (e.k0 !== k) {
+          e.k0 = k; e.fx = e.x; e.fy = e.y;
+          if (k >= 6) { e.tx = e.x - 1400; e.ty = e.y; }
+          else {
+            const dx = this.player.x - e.x, dy = this.player.y - e.y, d = Math.hypot(dx, dy) || 1, s = Math.min(d, 300);
+            e.tx = e.x + dx / d * s; e.ty = e.y + dy / d * s;
+          }
+          e.rot = Math.atan2(e.ty - e.fy, e.tx - e.fx) - Math.PI;
+          e.dash = this.time;
+        }
+        const q = easeOut(f / 0.4);
+        e.x = e.fx + (e.tx - e.fx) * q;
+        e.y = e.fy + (e.ty - e.fy) * q;
+      };
+    }
+
     // ------------------------------------------------------------------ Schüsse auf Noten
 
     planNote(n) {
       const loud = this.L.loudAt(n.t);
-      let count = n.strong ? 2 : 1;
+      let count = n.strong ? 3 : 2;
       if (loud < 0.3) count = n.strong ? 1 : 0;
+      else if (loud < 0.5) count--;
       const cands = this.enemies.filter(e => e.active && !e.dead && e.k.shoots && e.kind !== 'boss' &&
         e.x < W - 80 && e.x > 180 && n.b - e.lastShotB >= e.k.cool);
       let any = false;
@@ -249,7 +394,12 @@
         const e = cands.splice(Math.floor(this.rng() * cands.length), 1)[0];
         e.lastShotB = n.b;
         e.nextShotT = n.t;
-        this.planned.push({ t: n.t, e, pattern: e.kind === 'orange' && n.strong ? 'spread3' : 'aim' });
+        let pattern = 'aim';
+        if (e.kind === 'turret') pattern = 'needle';
+        else if (e.kind === 'carrier') pattern = n.strong ? 'spread5' : 'twinC';
+        else if (e.kind === 'splitter') pattern = n.strong ? 'cross' : 'aim';
+        else if ((e.kind === 'orange' || e.kind === 'wormhead') && n.strong) pattern = 'spread3';
+        this.planned.push({ t: n.t, e, pattern });
         any = true;
       }
       const boss = this.bossRef;
@@ -270,15 +420,22 @@
     }
 
     shoot(x, y, ang, sp, kind = 'orb') {
-      this.bullets.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r: kind === 'big' ? 16 : 11, kind, t: 0 });
+      const r = kind === 'big' ? 16 : kind === 'needle' ? 8 : 11;
+      this.bullets.push({ x, y, vx: Math.cos(ang) * sp, vy: Math.sin(ang) * sp, r, kind, t: 0 });
     }
 
     fire(e, pattern) {
       const sp = this.bulletSpeed();
-      const mx = e.x - e.k.rx * 0.6, my = e.y;
+      let mx = e.x - e.k.rx * 0.6, my = e.y;
+      if (e.kind === 'turret') { mx = e.x - 18; my = e.y + (e.flipY ? 16 : -16); }
       const a = this.aim(mx, my);
       switch (pattern) {
         case 'aim': this.shoot(mx, my, a, sp); break;
+        case 'needle': this.shoot(mx, my, a, sp * 1.5, 'needle'); this.shoot(mx, my, a, sp * 1.25, 'needle'); break;
+        case 'cross': for (let k = 0; k < 4; k++) this.shoot(e.x, e.y, this.beat * 0.5 + k * Math.PI / 2, sp * 0.8); break;
+        case 'twinC':
+          for (const dy of [-55, 55]) this.shoot(e.x - 170, e.y + dy, this.aim(e.x - 170, e.y + dy), sp);
+          break;
         case 'spread3': for (let k = -1; k <= 1; k++) this.shoot(mx, my, a + k * 0.2, sp); break;
         case 'spread5': for (let k = -2; k <= 2; k++) this.shoot(mx, my, a + k * 0.16, sp * 1.05); break;
         case 'twin':
@@ -304,13 +461,37 @@
         e.path(e, u, dt);
         e.flash = Math.max(0, e.flash - dt);
         if (e.kind === 'cannon') this.planGateBeams(e);
-        if (e.x < -250 || e.x > W + 900 || e.gone) { e.dead = true; e.escaped = true; }
+        if (e.kind === 'mine') this.stepMine(e);
+        if (e.dead) continue;
+        if (e.x < -250 || e.x > W + 2400 || e.gone) { e.dead = true; e.escaped = true; continue; }
         // Zusammenstoß mit dem Spieler
         const p = this.player;
         if (p.alive && p.inv <= 0 && !this.hyperOn && this.inside(e, p.x, p.y, 6)) this.killPlayer();
       }
       this.enemies = this.enemies.filter(e => !e.dead);
       if (this.bossRef && this.bossRef.dead) this.bossRef = null;
+    }
+
+    // Mine: Klang auf ihre Eins terminieren, dort platzt sie in einen Ring aus 12 Kugeln
+    stepMine(e) {
+      const map = this.L.map;
+      // Noch nicht (weit genug) im Bild: auf die nächste Eins verschieben
+      while (!e.boomPlanned && e.x > W - 160 && map.timeOf(e.boomB) < this.songT + LOOK + 0.1) e.boomB += 4;
+      const tb = map.timeOf(e.boomB);
+      e.boomT = tb;
+      if (!e.boomPlanned && e.x > W - 160) return;
+      if (!e.boomPlanned && tb <= this.songT + LOOK) {
+        e.boomPlanned = true;
+        this.audio.enemyShot(tb, true);
+        this.audio.enemyBoom(tb, 1);
+      }
+      if (this.songT >= tb && e.boomPlanned) {
+        e.dead = true;
+        const sp = this.bulletSpeed() * 0.75;
+        for (let k = 0; k < 12; k++) this.shoot(e.x, e.y, k * Math.PI / 6 + e.rot, sp);
+        this.explode(e.x, e.y, 0.9);
+        this.addFx({ type: 'ring', x: e.x, y: e.y, life: 0.4, size: 160, color: '255,90,210' });
+      }
     }
 
     planGateBeams(e) {
@@ -372,9 +553,10 @@
 
       // Explosion: Bild sofort, Klang auf der nächsten Sechzehntel
       const q = Math.ceil(this.beat * 4 + 0.05) / 4;
-      if (q !== this.lastBoomQ || big > 1) {
+      // Kleine Explosionen höchstens eine pro Sechzehntel, größere immer (der Boss hat seinen eigenen Klang)
+      if (e.kind !== 'boss' && (q !== this.lastBoomQ || big > 1)) {
         this.lastBoomQ = q;
-        this.audio.enemyBoom(map.timeOf(q), big);
+        this.audio.enemyBoom(map.timeOf(q), big * (e.scale || 1), e.kind === 'rock');
       }
       this.explode(e.x, e.y, big * (e.scale || 1));
       if (e.kind === 'boss') {
@@ -385,7 +567,20 @@
         this.bullets.length = 0;
         this.banner = { text: 'BASS CORE DOWN', sub: '', t0: this.songT, t1: this.songT + 3 };
       }
-      if (e.kind === 'cannon') this.shake = Math.max(this.shake, 10);
+      if (e.kind === 'cannon' || e.kind === 'carrier') this.shake = Math.max(this.shake, 14);
+      if (e.kind === 'splitter') {
+        // Zerfällt in fünf Scherben, die auseinanderfliegen und dann nach links abdriften
+        const b0 = this.beat, x0 = e.x, y0 = e.y;
+        for (let k = 0; k < 5; k++) {
+          const a = k * Math.PI * 2 / 5 + e.rot;
+          this.addEnemy('shard', b0, (s, u) => {
+            const out = 170 * easeOut(u / 1.2);
+            s.x = x0 + Math.cos(a) * out - Math.max(0, u - 1) * 260;
+            s.y = y0 + Math.sin(a) * out;
+            s.rot = u * 3;
+          });
+        }
+      }
 
       // Beute: Orange lassen manchmal eine Kapsel fallen, eine komplett abgeschossene Kette immer
       let drop = e.k.drop && this.rng() < e.k.drop;
@@ -400,6 +595,15 @@
         const a = Math.random() * Math.PI * 2, s = (150 + Math.random() * 450) * Math.sqrt(size);
         this.addFx({ type: 'spark', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.4 + Math.random() * 0.4,
           size: 2 + Math.random() * 3, color: Math.random() < 0.5 ? '#ffd27a' : '#ff7a3c', delay });
+      }
+      if (size >= 1.2) {
+        this.addFx({ type: 'ring', x, y, life: 0.35 + 0.1 * size, size: 120 * size, delay, color: '255,200,140' });
+        const m = Math.round(4 * size);
+        for (let i = 0; i < m; i++) {
+          const a = Math.random() * Math.PI * 2, s = 120 + Math.random() * 280;
+          this.addFx({ type: 'debris', x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.8 + Math.random() * 0.6,
+            size: 6 + Math.random() * 10 * Math.sqrt(size), rot: Math.random() * 6, spin: (Math.random() - 0.5) * 12, delay });
+        }
       }
       this.shake = Math.max(this.shake, 3 * size);
     }
@@ -434,6 +638,7 @@
         p.x = clamp(p.x + ix * sp * dt, BOUNDS.x0, BOUNDS.x1);
         p.y = clamp(p.y + iy * sp * dt, BOUNDS.y0, BOUNDS.y1);
         p.tilt += (iy - p.tilt) * Math.min(1, dt * 10);
+        if (p.inv <= 0 && !this.hyperOn && this.inHull(p.x, p.y, 14)) { this.killPlayer(); if (!p.alive) return; }
       }
 
       // Drohne
@@ -512,6 +717,11 @@
         s.x += s.vx * dt;
         s.y += s.vy * dt;
         if (s.x > W + 40 || s.y < -40 || s.y > H + 40) { s.dead = true; continue; }
+        if (this.hull.length && this.inHull(s.x, s.y, 0)) {
+          s.dead = true;
+          this.addFx({ type: 'spark', x: s.x, y: s.y, vx: -150 - Math.random() * 200, vy: (Math.random() - 0.5) * 300, life: 0.2, size: 3, color: '#bfe8ff' });
+          continue;
+        }
         for (const e of this.enemies) {
           if (!e.active || e.dead || e.x > W + 40) continue;
           if (this.inside(e, s.x, s.y, s.big ? 10 : 4)) {
@@ -531,12 +741,13 @@
         b.y += b.vy * dt;
         b.t += dt;
         if (b.x < -40 || b.x > W + 40 || b.y < -40 || b.y > H + 40) { b.dead = true; continue; }
+        if (this.hull.length && b.t > 0.1 && this.inHull(b.x, b.y, 0)) { b.dead = true; continue; }
         if (this.droneOnline && p.alive && Math.hypot(b.x - d.x, b.y - d.y) < 30 + b.r) {
           b.dead = true;
           this.droneE -= 0.2;
           this.audio.droneBlock();
           this.addFx({ type: 'muzzle', x: b.x, y: b.y, life: 0.15, size: 40, color: '#6fd0ff' });
-          if (this.droneE <= 0) { this.droneE = 0; this.droneOnline = false; this.explode(d.x, d.y, 0.6); }
+          if (this.droneE <= 0) { this.droneE = 0; this.droneOnline = false; this.explode(d.x, d.y, 0.6); this.audio.droneLost(); }
           continue;
         }
         if (p.alive && p.inv <= 0 && !this.hyperOn && Math.hypot(b.x - p.x, b.y - p.y) < PLAYER_R + b.r * 0.7) {
@@ -575,6 +786,7 @@
         if (f.delay > 0) { f.delay -= dt; continue; }
         f.t += dt;
         if (f.vx !== undefined) { f.x += f.vx * dt; f.y += f.vy * dt; f.vx *= 0.96; f.vy *= 0.96; }
+        if (f.spin) f.rot += f.spin * dt;
       }
       this.fx = this.fx.filter(f => f.t < f.life);
       for (const p of this.popups) p.t += dt;

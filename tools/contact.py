@@ -1,10 +1,11 @@
-"""Contact sheet of art/raw for picking variants:  python tools/contact.py [out.png]"""
+"""Contact sheet of art/raw for picking variants:  python tools/contact.py [out.png] [name prefix ...]"""
 import sys
 from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parent.parent
-files = sorted((ROOT / "art" / "raw").glob("*.png"))
+prefixes = sys.argv[2:]
+files = sorted(f for f in (ROOT / "art" / "raw").glob("*.png") if not prefixes or f.stem.startswith(tuple(prefixes)))
 T, COLS = 300, 6
 rows = (len(files) + COLS - 1) // COLS
 sheet = Image.new("RGB", (COLS * T, rows * (T + 24)), (30, 30, 30))

@@ -25,13 +25,28 @@ SPRITES = {
     "boss": ("boss_11", 1400, 700),
     "asteroid": ("asteroid_11", 300, 300),
     "powerup": ("powerup_11", 160, 160),
+    "turret": ("turret_11", 220, 220),
+    "dart": ("dart_11", 220, 120),
+    "mine": ("mine_11", 200, 200),
+    "carrier": ("carrier_11", 900, 520),
+    "worm_head": ("worm_head_11", 260, 260),
+    "worm_segment": ("worm_segment_11", 200, 200),
+    "splitter": ("splitter_11", 300, 300),
+    "hull1": ("hull_11", 1536, 512),
+    "hull2": ("hull_23", 1536, 512),
+    "hull3": ("hull_37", 1536, 512),
+    "hull4": ("hull_41", 1536, 512),
 }
 ADDITIVE = {  # name: (raw file, max width)
     "galaxy": ("galaxy_11", 1024),
     "nebula": ("nebula_23", 1536),
     "explosion": ("explosion_11", 512),
 }
-PLANET = ("planet_11", 1024)
+PLANET = ("planet_gas_11", 1024)
+TEXTURES = {  # name: (raw file, size) – deckend, als Kachel
+    "hulltex1": ("hulltex_11", 512),
+    "hulltex2": ("hulltex_23", 512),
+}
 
 
 def smoothstep(a, b, x):
@@ -68,8 +83,10 @@ def planet(im):
     rgb = np.asarray(im.convert("RGB")).astype(np.float32)
     lum = rgb.mean(axis=2)
     ys, xs = np.nonzero(lum > 28)
-    cx, cy = (xs.min() + xs.max()) / 2, (ys.min() + ys.max()) / 2
+    # Die Nachtseite (rechts) ist oft zu dunkel für die Erkennung: Radius aus der größeren Ausdehnung,
+    # Mittelpunkt vom beleuchteten linken Rand aus
     rad = max(xs.max() - xs.min(), ys.max() - ys.min()) / 2
+    cx, cy = xs.min() + rad, (ys.min() + ys.max()) / 2
     yy, xx = np.mgrid[0:im.height, 0:im.width]
     dist = np.hypot(xx - cx, yy - cy)
     disc = 1 - smoothstep(rad * 0.96, rad * 0.99, dist)
@@ -94,6 +111,12 @@ def main():
         im.thumbnail((mw, mw), Image.LANCZOS)
         im.save(OUT / f"{name}.jpg", quality=88)
         print("additive", name)
+    for name, (src, size) in TEXTURES.items():
+        f = RAW / f"{src}.png"
+        if not f.exists():
+            print("missing", f.name); continue
+        Image.open(f).convert("RGB").resize((size, size), Image.LANCZOS).save(OUT / f"{name}.jpg", quality=86)
+        print("texture", name)
     f = RAW / f"{PLANET[0]}.png"
     if f.exists():
         im = planet(Image.open(f))

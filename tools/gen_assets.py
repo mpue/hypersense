@@ -13,6 +13,7 @@ HOST = "http://127.0.0.1:8188"
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "art" / "raw"
 SEEDS = [11, 23]
+EXTRA_SEEDS = {"hull": [11, 23, 37, 41]}   # mehrere Rumpf-Module für Abwechslung
 
 GREEN = ("highly detailed sci-fi video game sprite, polished 3D render, sharp clean silhouette, centered, "
          "the whole object fully visible with margin around it, isolated on a flat uniform pure bright green "
@@ -39,9 +40,36 @@ ASSETS = {
     "asteroid": ("a single rough dark grey rocky asteroid with craters, lit from the left", GREEN, 1024, 1024),
     "powerup": ("a small glowing futuristic power-up capsule, chrome metal pod with a bright cyan energy crystal "
                 "inside", GREEN, 1024, 1024),
+    "turret": ("a compact armored gun turret with a twin barrel cannon on a flat heavy base, grey metal with red "
+               "warning lights, barrels pointing diagonally up and to the left, side view", GREEN, 1024, 1024),
+    "dart": ("a small sleek red and black alien dart drone shaped like an arrowhead, very pointed, glowing red "
+             "engine at the back, nose pointing to the left, exact side view profile", GREEN, 1024, 1024),
+    "mine": ("a spherical space mine covered with short conical spikes, dark metal with glowing magenta lights "
+             "between the spikes", GREEN, 1024, 1024),
+    "carrier": ("a large armored alien carrier gunship with a wide glowing hangar bay opening, heavy grey and purple "
+                "hull, glowing violet engines at the back, bow facing to the left, exact side view profile",
+                GREEN, 1536, 1024),
+    "worm_head": ("the head of a biomechanical space serpent, armored dark metal plates, glowing green eyes and open "
+                  "mechanical jaws, facing to the left, exact side view", GREEN, 1024, 1024),
+    "worm_segment": ("a single round armored biomechanical body segment of a space serpent, dark metal plates with "
+                     "glowing green seams and a green core, side view", GREEN, 1024, 1024),
+    "splitter": ("a large glowing faceted violet crystal orb enemy held in a thin metal cage with small thrusters",
+                 GREEN, 1024, 1024),
+    "hull": ("a long horizontal strip of a massive space station hull seen exactly from the side, heavy industrial "
+             "grey metal plating, pipes, vents, antennas and small blue lights, perfectly flat straight top edge, "
+             "wide panoramic module", GREEN, 1536, 512),
+    "hulltex": ("sci-fi space station hull plating texture, heavy dark grey riveted metal panels, pipes, vents, "
+                "cable ducts and a few small glowing blue lights, flat orthographic front view filling the entire "
+                "frame edge to edge, even lighting", "no text, no frame, no border", 1024, 1024),
     # backdrops (black -> drawn additively / with a disc mask)
     "planet": ("a large blue earth-like planet seen from space, thin glowing blue atmosphere rim, dark night side, "
                "the entire planet visible and centered, " + "photorealistic", BLACK, 1024, 1024),
+    "planet_gas": ("a colossal alien gas giant planet seen from space, swirling deep blue, teal and violet cloud bands "
+                   "with a huge glowing storm vortex, thin bright cyan atmosphere rim, dark night side, no rings, "
+                   "the entire planet visible and centered, epic cinematic, photorealistic", BLACK, 1024, 1024),
+    "planet_lava": ("a colossal alien volcanic planet seen from space, dark basalt crust split by glowing orange lava "
+                    "rivers and cracks, thin red atmosphere rim, dark night side, no rings, the entire planet visible "
+                    "and centered, epic cinematic, photorealistic", BLACK, 1024, 1024),
     "galaxy": ("a beautiful spiral galaxy with a bright pink orange core and blue violet spiral arms, tilted, "
                "photorealistic astrophotography, centered", BLACK, 1024, 1024),
     "nebula": ("a wispy glowing blue and violet space nebula cloud with a few bright stars, "
@@ -83,7 +111,7 @@ def main():
     jobs = []
     for name in names:
         subject, style, w, h = ASSETS[name]
-        for seed in SEEDS:
+        for seed in EXTRA_SEEDS.get(name, SEEDS):
             pid = post("/prompt", {"prompt": workflow(subject + ", " + style, w, h, seed, "hypersense/" + name)})["prompt_id"]
             jobs.append((name, seed, pid))
     print(f"{len(jobs)} jobs queued", flush=True)

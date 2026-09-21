@@ -15,7 +15,10 @@
   const IMAGES = {
     player: 'player.png', drone: 'drone.png', enemy_blue: 'enemy_blue.png', enemy_orange: 'enemy_orange.png',
     enemy_fighter: 'enemy_fighter.png', cannon: 'cannon.png', boss: 'boss.png', asteroid: 'asteroid.png',
-    powerup: 'powerup.png', planet: 'planet.png', galaxy: 'galaxy.jpg', nebula: 'nebula.jpg', explosion: 'explosion.jpg',
+    powerup: 'powerup.png', turret: 'turret.png', dart: 'dart.png', mine: 'mine.png', carrier: 'carrier.png',
+    worm_head: 'worm_head.png', worm_segment: 'worm_segment.png', splitter: 'splitter.png',
+    hull1: 'hull1.png', hull2: 'hull2.png', hull3: 'hull3.png', hull4: 'hull4.png',
+    hulltex1: 'hulltex1.jpg', hulltex2: 'hulltex2.jpg', planet: 'planet.png', galaxy: 'galaxy.jpg', nebula: 'nebula.jpg', explosion: 'explosion.jpg',
   };
 
   const loadImage = (name, file) => new Promise(res => {
@@ -32,7 +35,7 @@
       this.keys = new Set();
       this.hit = new Set();
       this.padPrev = [];
-      const block = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'];
+      const block = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'F3'];
       addEventListener('keydown', e => {
         if (block.includes(e.code)) e.preventDefault();
         if (!e.repeat) this.hit.add(e.code);
@@ -54,6 +57,7 @@
       let pause = h('Escape') || h('KeyP');
       let start = h('Enter') || h('NumpadEnter') || h('Space') || h('Click');
       let prev = h('ArrowLeft') || h('KeyA'), next = h('ArrowRight') || h('KeyD');
+      const stats = h('F3'), quality = h('KeyG');
 
       const pad = navigator.getGamepads ? [...navigator.getGamepads()].find(p => p) : null;
       if (pad) {
@@ -77,7 +81,7 @@
         else document.documentElement.requestFullscreen().catch(() => {});
       }
       this.hit.clear();
-      return { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)), fire, focus, hyper, drone, pause, start, prev, next };
+      return { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)), fire, focus, hyper, drone, pause, start, prev, next, stats, quality };
     }
   }
 
@@ -97,7 +101,9 @@
     const images = Object.fromEntries(await Promise.all(Object.entries(IMAGES).map(([n, f]) => loadImage(n, f))));
     try { await document.fonts.load('700 40px Orbitron'); } catch (e) { /* Ersatzschrift */ }
     renderer = new Renderer(canvas, images);
+    applyQuality();
     requestAnimationFrame(loop);
+    audio.loadSamples();
 
     songs = await fetch('api/songs').then(r => r.json()).catch(() => []);
     if (!songs.length) { status = 'NO SONG IN music/'; return; }
@@ -155,9 +161,58 @@
     try { localStorage.setItem(hiKey(), String(hi)); } catch (e) { /* kein Speicher */ }
   }
 
+  // ------------------------------------------------------------------ Leistung
+  // Grafik: 'auto' schaltet bei anhaltend langsamen Frames selbst auf 'low'. G wechselt, F3 zeigt Messwerte.
+  const perf = { show: params.get('stats') === '1', gaps: [], cpu: [], mode: 'auto', slow: 0, note: '', noteT: 0 };
+  try { perf.mode = localStorage.getItem('hypersense.quality') || 'auto'; } catch (e) { /* kein Speicher */ }
+
+  function applyQuality() {
+    if (perf.mode !== 'auto') renderer.quality = perf.mode;
+  }
+
+  function trackPerf(gap, cpu, inp) {
+    perf.gaps.push(gap); perf.cpu.push(cpu);
+    if (perf.gaps.length > 120) { perf.gaps.shift(); perf.cpu.shift(); }
+    if (inp.stats) perf.show = !perf.show;
+    if (inp.quality) {
+      perf.mode = { auto: 'high', high: 'low', low: 'auto' }[perf.mode];
+      if (perf.mode === 'auto') renderer.quality = 'high';
+      applyQuality();
+      try { localStorage.setItem('hypersense.quality', perf.mode); } catch (e) { /* kein Speicher */ }
+      perf.note = 'GRAPHICS: ' + perf.mode.toUpperCase(); perf.noteT = 2;
+    }
+    // Auto: 2 s lang im Schnitt über 21 ms pro Frame (unter ~48 fps) -> sparsam
+    if (perf.mode === 'auto' && renderer.quality === 'high' && mode === 'play') {
+      perf.slow = gap > 21 ? perf.slow + gap / 1000 : Math.max(0, perf.slow - gap / 2000);
+      if (perf.slow > 2) { renderer.quality = 'low'; perf.note = 'GRAPHICS: AUTO -> LOW'; perf.noteT = 3; }
+    }
+  }
+
+  function drawPerf(dt) {
+    const c = renderer.c;
+    perf.noteT = Math.max(0, perf.noteT - dt);
+    if (perf.noteT > 0) renderer.glowText(perf.note, '600 26px "Orbitron", sans-serif', '#9dff8a', '', 0, 1900, 50, 'right');
+    if (!perf.show || !perf.gaps.length) return;
+    const avg = a => a.reduce((x, y) => x + y, 0) / a.length;
+    const g = avg(perf.gaps), worst = Math.max(...perf.gaps), slowN = perf.gaps.filter(x => x > 20).length;
+    const lines = [
+      `FPS ${(1000 / g).toFixed(0)}   FRAME ${g.toFixed(1)} ms   WORST ${worst.toFixed(1)} ms   >20ms ${slowN}/120`,
+      `JS ${avg(perf.cpu).toFixed(2)} ms   GFX ${perf.mode.toUpperCase()} (${renderer.quality})`,
+      game ? `ENEMIES ${game.enemies.length}   BULLETS ${game.bullets.length}   FX ${game.fx.length}` : '',
+    ];
+    c.fillStyle = 'rgba(0,0,0,0.6)';
+    c.fillRect(10, 10, 760, 96);
+    c.fillStyle = '#9dff8a';
+    c.font = '16px monospace';
+    c.textAlign = 'left';
+    lines.forEach((l, i) => c.fillText(l, 22, 36 + i * 26));
+  }
+
   function loop(now) {
-    const dt = Math.min(1 / 30, Math.max(0, (now - last) / 1000));
+    const gap = now - last;
+    const dt = Math.min(1 / 30, Math.max(0, gap / 1000));
     last = now;
+    const cpu0 = performance.now();
     const inp = input.poll();
     let songT = 0, beat = 0;
     if (game && mode !== 'title') {
@@ -188,6 +243,8 @@
     }
     if (mode === 'paused') renderer.paused();
     if (mode === 'results') renderer.results(game, { hi });
+    trackPerf(gap, performance.now() - cpu0, inp);
+    drawPerf(dt);
     requestAnimationFrame(loop);
   }
 
