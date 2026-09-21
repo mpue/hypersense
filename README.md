@@ -41,8 +41,29 @@ mit `?song=Name` einen bestimmten.
   und der Spieler ist unverwundbar.
 - **SYNC:** Ein Abschuss innerhalb von ±50 ms um einen Beat zählt doppelt und lädt HYPER doppelt.
 - **Kette:** Abschüsse ohne Pause von mehr als 4 Beats erhöhen den Multiplikator (bis ×8).
-- **Kapseln:** Sie fallen aus orangen Gegnern und kommen immer, wenn eine Kette komplett abgeschossen ist.
-  Jede hebt die Waffe eine Stufe, auf D gibt es stattdessen Punkte und HYPER-Ladung.
+- **Waffenstufen A–E:**
+  - A: Zwillingsbolzen
+  - B: dazu ein Fächer
+  - C: dazu ein Plasma-Speer, der 3 Gegner durchschlägt
+  - D: dazu ein breiter Fächer
+  - E: alles als Plasma, noch breiter
+
+  Treffer blitzen und sprühen Funken, das Schiff hat Rückstoß. Beim Tod sinken Waffe und Raketen
+  um eine Stufe.
+- **Kapseln (Power-ups):** Welcher Typ fällt, richtet sich nach dem, was gerade fehlt. Kapseln kommen aus
+  orangen Gegnern, Türmen, Splittern, Kanonen, Trägern und Serpent-Köpfen. Außerdem fällt immer eine, wenn
+  eine Kette komplett abgeschossen ist, und spätestens alle 15 Abschüsse. In der Nähe zieht ein Magnet sie
+  zum Schiff.
+
+  | Kapsel | Wirkung |
+  |---|---|
+  | **W** | Waffe eine Stufe hoch (auf E: 5000 Punkte) |
+  | **S** | Schild: fängt 3 Treffer ab, auch eine Rumpf-Berührung |
+  | **E** | Energie: Drohne voll, +40 % HYPER |
+  | **M** | Zielsuchraketen, bis 3 Rohre, mit Flächenschaden |
+  | **R** | Rapid-Fire für 8 Takte |
+  | **2x** | doppelte Punkte für 8 Takte |
+  | **1UP** | ein Extraleben (selten) |
 - Ein Song ist eine Stage. Auf den stärksten Drop folgt der Boss, der **Bass-Kern**: Er feuert Ringe auf
   den Takt-Einsen, Fächer auf betonten Noten und Zwillingsschüsse auf den übrigen.
 - **Die Welt scrollt im Takt** (110 Pixel pro Beat). In mittellauten 8-Takt-Blöcken fliegt man durch

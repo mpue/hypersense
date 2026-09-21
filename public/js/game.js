@@ -14,6 +14,19 @@
   const PLAYER_R = 9;                // Trefferzone = Cockpit
   const SHOT_SPEED = 1900;
   const FIRE_RATE = 11;
+  const RAPID_RATE = 18;             // Schuss/s mit Power-up R
+  const MAX_WEAPON = 5;              // A..E
+
+  // Power-ups: Buchstabe, Name, Farbe der Kapsel
+  const POWERS = {
+    W: { name: 'WEAPON UP', color: '#5ad8ff', label: 'W' },
+    S: { name: 'SHIELD', color: '#7f95ff', label: 'S' },
+    E: { name: 'ENERGY', color: '#6dff8a', label: 'E' },
+    M: { name: 'MISSILES', color: '#ff6a4a', label: 'M' },
+    R: { name: 'RAPID FIRE', color: '#ffd24a', label: 'R' },
+    X: { name: 'SCORE x2', color: '#d86bff', label: '2x' },
+    L: { name: '1UP', color: '#fff3b0', label: '1UP' },
+  };
 
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
   const smooth = x => { const c = clamp(x, 0, 1); return c * c * (3 - 2 * c); };
@@ -25,17 +38,17 @@
   const KINDS = {
     blue:    { hp: 3,   rx: 34,  ry: 34, score: 100,   sprite: 'enemy_blue',    h: 84,  shoots: true, cool: 2,   size: 1 },
     orange:  { hp: 7,   rx: 40,  ry: 40, score: 250,   sprite: 'enemy_orange',  h: 96,  shoots: true, cool: 1.5, size: 1.3, drop: 0.3 },
-    fighter: { hp: 4,   rx: 50,  ry: 22, score: 200,   sprite: 'enemy_fighter', h: 62,  shoots: true, cool: 2,   size: 1 },
-    rock:    { hp: 12,  rx: 52,  ry: 52, score: 150,   sprite: 'asteroid',      h: 120, shoots: false, size: 1.5 },
-    cannon:  { hp: 45,  rx: 130, ry: 28, score: 800,   sprite: 'cannon',        h: 70,  shoots: false, size: 1.5, flip: true },
+    fighter: { hp: 4,   rx: 50,  ry: 22, score: 200,   sprite: 'enemy_fighter', h: 62,  shoots: true, cool: 2,   size: 1, drop: 0.1 },
+    rock:    { hp: 12,  rx: 52,  ry: 52, score: 150,   sprite: 'asteroid',      h: 120, shoots: false, size: 1.5, drop: 0.15 },
+    cannon:  { hp: 45,  rx: 130, ry: 28, score: 800,   sprite: 'cannon',        h: 70,  shoots: false, size: 1.5, flip: true, drop: 1 },
     boss:    { hp: 520, rx: 300, ry: 120, score: 20000, sprite: 'boss',         h: 440, shoots: true, cool: 0, size: 3 },
-    turret:  { hp: 6,   rx: 36,  ry: 30, score: 300,   sprite: 'turret',        h: 74,  shoots: true, cool: 1.5, size: 1.2 },
+    turret:  { hp: 6,   rx: 36,  ry: 30, score: 300,   sprite: 'turret',        h: 74,  shoots: true, cool: 1.5, size: 1.2, drop: 0.25 },
     dart:    { hp: 2,   rx: 34,  ry: 14, score: 150,   sprite: 'dart',          h: 34,  shoots: false, size: 1 },
     mine:    { hp: 4,   rx: 32,  ry: 32, score: 200,   sprite: 'mine',          h: 72,  shoots: false, size: 1.2 },
-    carrier: { hp: 80,  rx: 180, ry: 70, score: 3000,  sprite: 'carrier',       h: 210, shoots: true, cool: 1, size: 2.6 },
-    wormhead:{ hp: 12,  rx: 42,  ry: 36, score: 500,   sprite: 'worm_head',     h: 92,  shoots: true, cool: 1, size: 1.3 },
+    carrier: { hp: 80,  rx: 180, ry: 70, score: 3000,  sprite: 'carrier',       h: 210, shoots: true, cool: 1, size: 2.6, drop: 1 },
+    wormhead:{ hp: 12,  rx: 42,  ry: 36, score: 500,   sprite: 'worm_head',     h: 92,  shoots: true, cool: 1, size: 1.3, drop: 1 },
     wormseg: { hp: 4,   rx: 30,  ry: 30, score: 80,    sprite: 'worm_segment',  h: 66,  shoots: false, size: 1 },
-    splitter:{ hp: 14,  rx: 50,  ry: 50, score: 400,   sprite: 'splitter',      h: 112, shoots: true, cool: 2, size: 1.3 },
+    splitter:{ hp: 14,  rx: 50,  ry: 50, score: 400,   sprite: 'splitter',      h: 112, shoots: true, cool: 2, size: 1.3, drop: 0.4 },
     shard:   { hp: 1,   rx: 22,  ry: 22, score: 60,    sprite: 'splitter',      h: 44,  shoots: false, size: 0.8 },
   };
 
@@ -51,7 +64,15 @@
     reset() {
       this.score = 0;
       this.lives = 3;
-      this.weapon = 1;               // 1..4  (A..D)
+      this.weapon = 1;               // 1..5  (A..E)
+      this.shield = 0;               // Treffer, die der Schild noch abfängt (0..3)
+      this.missileLvl = 0;           // Raketenrohre 0..3
+      this.missiles = [];
+      this.missileT = 0;
+      this.rapidEnd = -1;            // Songzeit, bis zu der Rapid-Fire läuft
+      this.doubleEnd = -1;           // …bzw. doppelte Punkte
+      this.volleyN = 0;
+      this.sinceDrop = 0;
       this.droneMode = 0;            // 0 = vorn, 1 = Flanke
       this.charge = 0;               // HYPER-Ladung 0..1
       this.droneE = 1;               // Drohnen-Energie 0..1
@@ -119,6 +140,8 @@
 
     get mult() { return Math.min(8, 1 + Math.floor(this.chain / 8)); }
     get hyperOn() { return this.songT < this.hyperEnd; }
+    get rapidOn() { return this.songT < this.rapidEnd; }
+    get doubleOn() { return this.songT < this.doubleEnd; }
 
     // ------------------------------------------------------------------ Hauptschritt
 
@@ -159,6 +182,7 @@
       this.stepBeams();
       this.stepPlayer(dt, input);
       this.stepShots(dt);
+      this.stepMissiles(dt);
       this.stepBullets(dt);
       this.stepItems(dt);
       this.stepFx(dt);
@@ -528,11 +552,35 @@
       return dx * dx + dy * dy < 1;
     }
 
-    hurt(e, dmg, x, y) {
+    hurt(e, dmg, x, y, heavy = false) {
       e.hp -= dmg;
-      e.flash = 0.05;
-      if (e.hp <= 0) this.killEnemy(e);
-      else if (x !== undefined && Math.random() < 0.3) this.addFx({ type: 'spark', x, y, vx: 200 + Math.random() * 200, vy: (Math.random() - 0.5) * 300, life: 0.25, size: 3, color: '#bfe8ff' });
+      if (e.hp <= 0) { this.killEnemy(e); return; }
+      // Treffer-Blitz nur kurz und höchstens alle 0,12 s – sonst ist ein Gegner unter Dauerfeuer nur noch weiß
+      if (this.time - (e.lastFlash || -1) > (e.k.size >= 1.5 ? 0.3 : 0.12)) { e.flash = 0.035; e.lastFlash = this.time; }
+      if (x === undefined || this.time - (e.lastHitFx || -1) < 0.06) return;
+      e.lastHitFx = this.time;
+      // Einschlag: kleiner Lichtblitz und Funken, die vom Gegner wegspritzen
+      this.addFx({ type: 'muzzle', x, y, life: 0.07, size: heavy ? 34 : 18, color: '#6fd0ff' });
+      const n = heavy ? 4 : 1;
+      for (let i = 0; i < n; i++) {
+        this.addFx({ type: 'spark', x, y, vx: -120 - Math.random() * 380, vy: (Math.random() - 0.5) * 420, life: 0.2 + Math.random() * 0.15, size: 2.5, color: heavy ? '#ffffff' : '#bfe8ff' });
+      }
+    }
+
+    // Kapsel fallen lassen – der Typ richtet sich danach, was dem Spieler gerade fehlt
+    dropItem(x, y) {
+      const opts = [
+        ['W', this.weapon < MAX_WEAPON ? 4 : 0.8],
+        ['S', this.shield === 0 ? 3 : 0.8],
+        ['E', this.droneE < 0.5 || this.charge < 0.5 ? 2.5 : 1],
+        ['M', this.missileLvl < 3 ? 2.5 : 0.5],
+        ['R', this.rapidOn ? 0.3 : 1.5],
+        ['X', this.doubleOn ? 0.3 : 1],
+        ['L', this.lives < 3 ? 0.4 : 0.15],
+      ];
+      let r = this.rng() * opts.reduce((s, o) => s + o[1], 0), type = 'W';
+      for (const [t, w] of opts) { if ((r -= w) < 0) { type = t; break; } }
+      this.items.push({ x, y, t: 0, type });
     }
 
     killEnemy(e) {
@@ -546,7 +594,7 @@
       this.chain++;
       this.maxChain = Math.max(this.maxChain, this.chain);
       this.lastKillBeat = this.beat;
-      const pts = e.k.score * this.mult * (sync ? 2 : 1);
+      const pts = e.k.score * this.mult * (sync ? 2 : 1) * (this.doubleOn ? 2 : 1);
       this.score += pts;
       this.charge = Math.min(1, this.charge + (e.kind === 'boss' ? 1 : 0.035 * big * (sync ? 2 : 1)));
       this.popups.push({ x: e.x, y: e.y - 30, text: (sync ? 'SYNC ' : '') + pts, t: 0, sync });
@@ -583,9 +631,12 @@
       }
 
       // Beute: Orange lassen manchmal eine Kapsel fallen, eine komplett abgeschossene Kette immer
-      let drop = e.k.drop && this.rng() < e.k.drop;
+      let drop = (e.k.drop && this.rng() < e.k.drop) || this.rng() < 0.04;
       if (e.group) { e.group.left--; if (e.group.left === 0) drop = true; }
-      if (drop) this.items.push({ x: e.x, y: e.y, t: 0 });
+      // spätestens alle 15 Abschüsse eine Kapsel
+      if (drop) this.sinceDrop = 0;
+      else if (++this.sinceDrop >= 15) { drop = true; this.sinceDrop = 0; }
+      if (drop) this.dropItem(e.x, e.y);
     }
 
     explode(x, y, size, delay = 0) {
@@ -668,34 +719,109 @@
         this.bullets = this.bullets.filter(b => !(b.x > p.x - 20 && Math.abs(b.y - p.y) < 70));
       }
 
-      // Feuer
+      // Feuer (Rapid-Fire: schneller), Raketen im eigenen Takt
+      const firing = input.fire || this.opts.autoFire;
       p.fire -= dt;
-      if ((input.fire || this.opts.autoFire) && p.fire <= 0) {
-        p.fire = 1 / FIRE_RATE;
+      if (firing && p.fire <= 0) {
+        p.fire = 1 / (this.rapidOn ? RAPID_RATE : FIRE_RATE);
         this.volley();
+      }
+      p.recoil = Math.max(0, (p.recoil || 0) - dt * 12);
+      this.missileT -= dt;
+      if (firing && this.missileLvl > 0 && this.missileT <= 0) {
+        this.missileT = this.rapidOn ? 0.38 : 0.55;
+        for (let k = 0; k < this.missileLvl; k++) {
+          const side = k % 2 ? 1 : -1;
+          this.missiles.push({ x: p.x - 10, y: p.y + side * (18 + 10 * k), vx: 80, vy: side * (240 + 60 * k), t: 0, target: null, smoke: 0 });
+        }
+        this.audio.missile();
       }
     }
 
+    // Waffenstufen:  A Zwilling · B + Fächer · C + Plasma-Speer (durchschlägt 3 Gegner)
+    //                D + breiter Fächer · E alles als Plasma, noch breiter
     volley() {
       const p = this.player, d = this.drone, w = this.weapon;
-      const bolt = (x, y, deg, dmg, big = false) => {
-        const a = deg * Math.PI / 180;
-        this.shots.push({ x, y, vx: Math.cos(a) * SHOT_SPEED, vy: Math.sin(a) * SHOT_SPEED, dmg, big });
+      const plasma = w >= 5 ? 'plasma' : 'bolt';
+      const shot = (x, y, deg, dmg, kind = plasma, pierce = 0) => {
+        const a = deg * Math.PI / 180, sp = kind === 'lance' ? 2600 : SHOT_SPEED;
+        this.shots.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg, kind, pierce, hit: pierce ? new Set() : null });
       };
-      bolt(p.x + 60, p.y - 9, 0, 1, w >= 4);
-      bolt(p.x + 60, p.y + 9, 0, 1, w >= 4);
-      if (w >= 2) { bolt(p.x + 50, p.y - 4, -5, 1); bolt(p.x + 50, p.y + 4, 5, 1); }
-      if (w >= 3) { bolt(p.x + 40, p.y - 4, -12, 0.8); bolt(p.x + 40, p.y + 4, 12, 0.8); }
+      shot(p.x + 60, p.y - 10, 0, 1.3);
+      shot(p.x + 60, p.y + 10, 0, 1.3);
+      if (w >= 2) { shot(p.x + 50, p.y - 4, -6, 1.1); shot(p.x + 50, p.y + 4, 6, 1.1); }
+      if (w >= 3 && this.volleyN % 2 === 0) shot(p.x + 80, p.y, 0, 3, 'lance', 3);
+      if (w >= 4) { shot(p.x + 40, p.y - 4, -14, 1); shot(p.x + 40, p.y + 4, 14, 1); }
+      if (w >= 5) { shot(p.x + 30, p.y - 6, -24, 1); shot(p.x + 30, p.y + 6, 24, 1); }
       if (this.droneOnline) {
-        if (this.droneMode === 0) bolt(d.x + 30, d.y, 0, 1, w >= 4);
-        else { bolt(d.x + 20, d.y, -30, 0.8); bolt(d.x + 20, d.y, 30, 0.8); }
+        if (this.droneMode === 0) shot(d.x + 30, d.y, 0, 1.3);
+        else { shot(d.x + 20, d.y, -30, 1); shot(d.x + 20, d.y, 30, 1); }
       }
-      this.muzzle = 0.05;
-      this.audio.playerShot();
+      this.volleyN++;
+      this.muzzle = 0.06;
+      p.recoil = 1;
+      this.audio.playerShot(w);
+    }
+
+    // Zielsuchraketen: erst seitlich ausstoßen, dann auf das nächste Ziel einschwenken
+    pickTarget(m) {
+      let best = null, bd = Infinity;
+      for (const e of this.enemies) {
+        if (!e.active || e.dead || e.x > W - 30 || e.x < 0) continue;
+        const d = Math.hypot(e.x - m.x, e.y - m.y) + (e.targeted ? 400 : 0);
+        if (d < bd) { bd = d; best = e; }
+      }
+      if (best) best.targeted = true;
+      return best;
+    }
+
+    stepMissiles(dt) {
+      for (const m of this.missiles) {
+        m.t += dt;
+        if (!m.target || m.target.dead) m.target = this.pickTarget(m);
+        let a = Math.atan2(m.vy, m.vx);
+        if (m.t > 0.12) {
+          const want = m.target ? Math.atan2(m.target.y - m.y, m.target.x - m.x) : 0;
+          let da = want - a;
+          while (da > Math.PI) da -= Math.PI * 2;
+          while (da < -Math.PI) da += Math.PI * 2;
+          a += clamp(da, -9 * dt, 9 * dt);
+        }
+        const sp = Math.min(1500, 350 + m.t * 2600);
+        m.vx = Math.cos(a) * sp; m.vy = Math.sin(a) * sp;
+        m.x += m.vx * dt; m.y += m.vy * dt;
+        m.smoke -= dt;
+        if (m.smoke <= 0) { m.smoke = 0.025; this.addFx({ type: 'muzzle', x: m.x, y: m.y, life: 0.25, size: 14, color: '#ff9a3c' }); }
+        if (m.t > 3 || m.x > W + 60 || m.x < -60 || m.y < -60 || m.y > H + 60 || (this.hull.length && this.inHull(m.x, m.y, 0))) { m.dead = true; continue; }
+        for (const e of this.enemies) {
+          if (!e.active || e.dead || !this.inside(e, m.x, m.y, 8)) continue;
+          m.dead = true;
+          this.hurt(e, 4, m.x, m.y, true);
+          // Flächenschaden
+          for (const o of this.enemies) if (o !== e && o.active && !o.dead && Math.hypot(o.x - m.x, o.y - m.y) < 90) this.hurt(o, 1.5);
+          this.addFx({ type: 'boom', x: m.x, y: m.y, life: 0.35, size: 55, rot: Math.random() * 6 });
+          this.addFx({ type: 'ring', x: m.x, y: m.y, life: 0.25, size: 80, color: '255,180,110' });
+          break;
+        }
+      }
+      this.missiles = this.missiles.filter(m => !m.dead);
     }
 
     killPlayer() {
       const p = this.player;
+      // Schild fängt den Treffer ab
+      if (this.shield > 0) {
+        this.shield--;
+        p.inv = 1;
+        this.shake = Math.max(this.shake, 10);
+        this.flash = Math.max(this.flash, 0.2);
+        this.addFx({ type: 'ring', x: p.x, y: p.y, life: 0.4, size: 220, color: '127,149,255' });
+        this.bullets = this.bullets.filter(b => Math.hypot(b.x - p.x, b.y - p.y) > 220);
+        if (this.inHull(p.x, p.y, 14)) p.y += p.y < 480 ? 140 : -140;   // aus dem Rumpf schubsen
+        this.popups.push({ x: p.x, y: p.y - 50, text: this.shield ? 'SHIELD ' + this.shield : 'SHIELD DOWN', t: 0 });
+        this.audio.shieldHit();
+        return;
+      }
       if (this.opts.god) { p.inv = 0.5; this.shake = 8; return; }
       p.alive = false;
       p.respawn = 1.6;
@@ -705,6 +831,9 @@
       this.audio.playerDie();
       this.audio.muffle(true);
       this.weapon = Math.max(1, this.weapon - 1);
+      this.missileLvl = Math.max(0, this.missileLvl - 1);
+      this.rapidEnd = this.doubleEnd = -1;
+      this.missiles.length = 0;
       this.chain = 0;
       this.lives--;
       if (this.lives < 0) { this.lives = 0; this.over = true; }
@@ -722,10 +851,14 @@
           this.addFx({ type: 'spark', x: s.x, y: s.y, vx: -150 - Math.random() * 200, vy: (Math.random() - 0.5) * 300, life: 0.2, size: 3, color: '#bfe8ff' });
           continue;
         }
+        const heavy = s.kind !== 'bolt';
         for (const e of this.enemies) {
           if (!e.active || e.dead || e.x > W + 40) continue;
-          if (this.inside(e, s.x, s.y, s.big ? 10 : 4)) {
-            this.hurt(e, s.dmg * (s.big ? 1.5 : 1), s.x, s.y);
+          if (s.hit && s.hit.has(e)) continue;
+          if (this.inside(e, s.x, s.y, heavy ? 12 : 5)) {
+            this.hurt(e, s.dmg * (s.kind === 'plasma' ? 1.4 : 1), s.x, s.y, heavy);
+            // Plasma-Speer fliegt weiter, bis er genug Gegner durchschlagen hat
+            if (s.hit) { s.hit.add(e); if (--s.pierce >= 0) continue; }
             s.dead = true;
             break;
           }
@@ -762,23 +895,47 @@
       const p = this.player;
       for (const it of this.items) {
         it.t += dt;
-        it.x -= 110 * dt;
-        it.y += Math.sin(it.t * 3) * 40 * dt;
+        const dx = p.x - it.x, dy = p.y - it.y, dist = Math.hypot(dx, dy);
+        if (p.alive && dist < 220 && dist > 1) {
+          // Magnet: in der Nähe fliegt die Kapsel zum Schiff
+          const pull = 900 * (1 - dist / 220) * dt;
+          it.x += dx / dist * pull; it.y += dy / dist * pull;
+        } else {
+          it.x -= 110 * dt;
+          it.y += Math.sin(it.t * 3) * 40 * dt;
+        }
         if (it.x < -60) it.dead = true;
-        if (p.alive && Math.hypot(it.x - p.x, it.y - p.y) < 55) {
+        if (p.alive && Math.hypot(it.x - p.x, it.y - p.y) < 60) {
           it.dead = true;
-          this.audio.powerup();
-          if (this.weapon < 4) {
-            this.weapon++;
-            this.popups.push({ x: it.x, y: it.y - 30, text: 'WEAPON ' + 'ABCD'[this.weapon - 1], t: 0, sync: true });
-          } else {
-            this.score += 2000 * this.mult;
-            this.charge = Math.min(1, this.charge + 0.25);
-            this.popups.push({ x: it.x, y: it.y - 30, text: '2000', t: 0 });
-          }
+          this.collect(it);
         }
       }
       this.items = this.items.filter(i => !i.dead);
+    }
+
+    collect(it) {
+      const map = this.L.map, eightBars = () => map.timeOf(this.beat + 32);
+      let text = POWERS[it.type].name, bonus = false;
+      switch (it.type) {
+        case 'W':
+          if (this.weapon < MAX_WEAPON) { this.weapon++; text = 'WEAPON ' + 'ABCDE'[this.weapon - 1]; } else bonus = true;
+          break;
+        case 'S': this.shield = 3; break;
+        case 'E':
+          this.droneE = 1; this.droneOnline = true;
+          this.charge = Math.min(1, this.charge + 0.4);
+          break;
+        case 'M':
+          if (this.missileLvl < 3) { this.missileLvl++; text = 'MISSILES ' + 'I'.repeat(this.missileLvl); } else bonus = true;
+          break;
+        case 'R': this.rapidEnd = eightBars(); break;
+        case 'X': this.doubleEnd = eightBars(); break;
+        case 'L': this.lives = Math.min(9, this.lives + 1); break;
+      }
+      if (bonus) { this.score += 5000 * this.mult; text = '5000'; }
+      this.popups.push({ x: it.x, y: it.y - 40, text, t: 0, sync: true, color: POWERS[it.type].color });
+      this.addFx({ type: 'ring', x: it.x, y: it.y, life: 0.35, size: 110, color: '160,230,255' });
+      this.audio.powerup(it.type);
     }
 
     stepFx(dt) {
@@ -796,5 +953,5 @@
   }
 
   window.Game = Game;
-  window.GameConst = { W, H, KINDS };
+  window.GameConst = { W, H, KINDS, POWERS };
 })();

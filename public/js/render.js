@@ -52,13 +52,21 @@
       }
       this.img = images;
       this.white = {};
-      for (const [k, im] of Object.entries(images)) if (im) this.white[k] = tinted(im, '#ffffff', 0.85);
+      for (const [k, im] of Object.entries(images)) if (im) this.white[k] = tinted(im, '#ffffff', 0.5);
       this.darkRock = images.asteroid ? tinted(images.asteroid, '#04050a', 0.85) : null;
       this.glows = {
         violet: glow('#b36bff', 32), pink: glow('#ff5ad2', 36), orange: glow('#ff9a3c', 32),
         blue: glow('#5ab8ff', 48), green: glow('#7dff6a', 24), white: glow('#ffffff', 32, 0.5),
         fire: glow('#ff8a2a', 64, 0.15),
       };
+      // Dunkler Hof hinter Gegnern: hebt sie vom hellen Schussfeuer ab
+      this.halo = document.createElement('canvas');
+      this.halo.width = this.halo.height = 64;
+      {
+        const h = this.halo.getContext('2d'), gr = h.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gr.addColorStop(0, 'rgba(0,0,6,0.85)'); gr.addColorStop(0.6, 'rgba(0,0,6,0.5)'); gr.addColorStop(1, 'rgba(0,0,6,0)');
+        h.fillStyle = gr; h.fillRect(0, 0, 64, 64);
+      }
       const rnd = (a, b) => a + Math.random() * (b - a);
       this.stars = [0.12, 0.3, 0.7].map((sp, l) => Array.from({ length: [260, 140, 60][l] }, () => ({
         x: rnd(0, W), y: rnd(0, H), b: rnd(0.3, 1), sp, s: [1, 1.6, 2.4][l], tw: rnd(0, TAU) })));
@@ -78,7 +86,12 @@
       if (o.flip || o.flipY) c.scale(o.flip ? -1 : 1, o.flipY ? -1 : 1);
       if (o.alpha !== undefined) c.globalAlpha = o.alpha;
       if (o.add) c.globalCompositeOperation = 'lighter';
-      c.drawImage(o.flash && this.white[name] ? this.white[name] : im, -w / 2, -h / 2, w, h);
+      c.drawImage(im, -w / 2, -h / 2, w, h);
+      // Treffer: nur ein heller Schimmer über dem Sprite, Details und Farben bleiben sichtbar
+      if (o.flash && this.white[name]) {
+        c.globalAlpha = 0.45 * (o.alpha ?? 1);
+        c.drawImage(this.white[name], -w / 2, -h / 2, w, h);
+      }
       c.restore();
       return true;
     }
@@ -315,14 +328,75 @@
         }
       }
 
-      for (const it of g.items) {
-        if (!this.spr('powerup', it.x, it.y, 58, { rot: Math.sin(it.t * 2) * 0.2 })) {
-          this.dot(this.glows.blue, it.x, it.y, 34);
+      // Kapseln: je Typ eingefärbt, mit Buchstaben und farbigem Leuchten
+      const POW = GameConst.POWERS;
+      if (!this.capsules && this.img.powerup) {
+        this.capsules = {};
+        this.capGlow = {};
+        for (const [t, p] of Object.entries(POW)) {
+          this.capsules[t] = tinted(this.img.powerup, p.color, 0.5);
+          this.capGlow[t] = glow(p.color, 48);
         }
-        c.globalCompositeOperation = 'lighter';
-        this.dot(this.glows.blue, it.x, it.y, 46 + 8 * Math.sin(it.t * 8), 0.5);
-        c.globalCompositeOperation = 'source-over';
       }
+      for (const it of g.items) {
+        const pw = POW[it.type] || POW.W, s = 1 + 0.08 * pulse;
+        c.globalCompositeOperation = 'lighter';
+        this.dot(this.capGlow ? this.capGlow[it.type] : this.glows.blue, it.x, it.y, (50 + 8 * Math.sin(it.t * 8)) * s, 0.7);
+        c.globalCompositeOperation = 'source-over';
+        const cap = this.capsules && this.capsules[it.type];
+        if (cap) {
+          c.save();
+          c.translate(it.x, it.y);
+          c.rotate(Math.sin(it.t * 2) * 0.2);
+          const h = 62 * s, w = h * cap.width / cap.height;
+          c.drawImage(cap, -w / 2, -h / 2, w, h);
+          c.restore();
+        } else this.dot(this.glows.blue, it.x, it.y, 34);
+        this.glowText(pw.label, `900 ${pw.label.length > 2 ? 18 : 26}px ${FONT}`, '#ffffff', pw.color, 8, it.x, it.y + 10);
+      }
+
+      // Spielerschüsse und Raketen VOR den Gegnern zeichnen: die Gegner liegen obenauf und
+      // werden vom additiven Leuchten der Schüsse nicht überstrahlt
+      c.globalCompositeOperation = 'lighter';
+      for (const s of g.shots) {
+        const a = Math.atan2(s.vy, s.vx);
+        c.save();
+        c.translate(s.x, s.y);
+        c.rotate(a);
+        if (s.kind === 'lance') {
+          // Plasma-Speer: langer, heller Strahl mit Glühen
+          c.drawImage(this.glows.blue, -90, -18, 130, 36);
+          c.fillStyle = 'rgba(140,235,255,0.95)';
+          c.fillRect(-80, -5, 110, 10);
+          c.fillStyle = '#ffffff';
+          c.fillRect(-64, -2, 92, 4);
+        } else if (s.kind === 'plasma') {
+          c.drawImage(this.glows.green, -34, -14, 56, 28);
+          c.fillStyle = 'rgba(160,255,140,0.95)';
+          c.fillRect(-32, -4.5, 46, 9);
+          c.fillStyle = '#ffffff';
+          c.fillRect(-20, -1.5, 32, 3);
+        } else {
+          c.drawImage(this.glows.green, -30, -9, 44, 18);
+          c.fillStyle = 'rgba(125,255,106,0.9)';
+          c.fillRect(-32, -3, 44, 6);
+          c.fillStyle = '#ffffff';
+          c.fillRect(-20, -1, 30, 2);
+        }
+        c.restore();
+      }
+      // Raketen: glühender Kopf mit kurzem Körper
+      for (const m of g.missiles) {
+        const a = Math.atan2(m.vy, m.vx);
+        c.save();
+        c.translate(m.x, m.y);
+        c.rotate(a);
+        c.drawImage(this.glows.orange, -26, -12, 40, 24);
+        c.fillStyle = '#fff0d0';
+        c.fillRect(-10, -2.5, 18, 5);
+        c.restore();
+      }
+      c.globalCompositeOperation = 'source-over';
 
       // Gegner – pumpen auf jedem Beat
       for (const e of g.enemies) {
@@ -336,6 +410,10 @@
           c.globalCompositeOperation = 'lighter';
           for (let i = 1; i <= 4; i++) this.dot(this.glows.fire, e.x + (e.fx - e.x) * i * 0.2, e.y + (e.fy - e.y) * i * 0.2, 22 - i * 3, 0.5 - i * 0.1);
           c.globalCompositeOperation = 'source-over';
+        }
+        if (e.kind !== 'boss' && e.kind !== 'cannon') {
+          const r = Math.max(k.rx, k.ry) * (e.scale || 1) * 1.5;
+          c.drawImage(this.halo, e.x - r, e.y - r, r * 2, r * 2);
         }
         const ok = this.spr(k.sprite, e.x, e.y, k.h * sc, { rot: e.rot, flip: k.flip, flipY: e.flipY, flash: e.flash > 0 });
         if (!ok) {
@@ -367,21 +445,6 @@
         if (e.kind === 'boss') this.dot(this.glows.fire, e.x - 20, e.y + 10, 90 + 50 * pulse, 0.7);
         c.globalCompositeOperation = 'source-over';
       }
-
-      // Spielerschüsse
-      c.globalCompositeOperation = 'lighter';
-      for (const s of g.shots) {
-        const a = Math.atan2(s.vy, s.vx);
-        c.save();
-        c.translate(s.x, s.y);
-        c.rotate(a);
-        c.fillStyle = s.big ? 'rgba(120,230,255,0.9)' : 'rgba(125,255,106,0.85)';
-        c.fillRect(-30, s.big ? -4 : -2.5, 40, s.big ? 8 : 5);
-        c.fillStyle = '#ffffff';
-        c.fillRect(-18, -1, 26, 2);
-        c.restore();
-      }
-      c.globalCompositeOperation = 'source-over';
 
       this.drawPlayer(g, st);
 
@@ -466,7 +529,7 @@
       for (const p of g.popups) {
         c.globalAlpha = 1 - p.t;
         c.font = `700 ${p.sync ? 30 : 22}px ${FONT}`;
-        c.fillStyle = p.sync ? '#9dff8a' : '#dff6ff';
+        c.fillStyle = p.color || (p.sync ? '#9dff8a' : '#dff6ff');
         c.fillText(p.text, p.x, p.y - p.t * 40);
       }
       c.globalAlpha = 1;
@@ -503,13 +566,24 @@
       // Triebwerk
       c.globalCompositeOperation = 'lighter';
       this.dot(this.glows.blue, p.x - 62, p.y + 2, 28 + Math.random() * 10, 0.9);
-      if (g.muzzle > 0) this.dot(this.glows.green, p.x + 64, p.y, 26, 0.9);
+      if (g.muzzle > 0) this.dot(this.glows.green, p.x + 66, p.y, 30 + 6 * g.weapon, 0.95);
       c.globalCompositeOperation = 'source-over';
+      const px = p.x - (p.recoil || 0) * 5;           // Rückstoß
       if (!blink) {
-        if (!this.spr('player', p.x, p.y, 64, { rot: p.tilt * 0.12 })) {
+        if (!this.spr('player', px, p.y, 64, { rot: p.tilt * 0.12 })) {
           c.fillStyle = '#e8f0ff';
-          c.beginPath(); c.moveTo(p.x + 60, p.y); c.lineTo(p.x - 50, p.y - 26); c.lineTo(p.x - 40, p.y); c.lineTo(p.x - 50, p.y + 26); c.fill();
+          c.beginPath(); c.moveTo(px + 60, p.y); c.lineTo(px - 50, p.y - 26); c.lineTo(px - 40, p.y); c.lineTo(px - 50, p.y + 26); c.fill();
         }
+      }
+      // Schildblase, dünner mit jedem abgefangenen Treffer
+      if (g.shield > 0) {
+        const r = 62 + 3 * Math.sin(performance.now() / 90);
+        c.globalCompositeOperation = 'lighter';
+        this.dot(this.glows.blue, p.x, p.y, r + 20, 0.18 + 0.08 * g.shield);
+        c.strokeStyle = `rgba(150,170,255,${0.25 + 0.2 * g.shield})`;
+        c.lineWidth = 1 + g.shield;
+        c.beginPath(); c.arc(p.x, p.y, r, 0, TAU); c.stroke();
+        c.globalCompositeOperation = 'source-over';
       }
       // Drohne
       const on = g.droneOnline;
@@ -541,9 +615,32 @@
       this.glowText(label, `600 14px ${FONT}`, 'rgba(190,230,255,0.7)', '', 0, x + (mirror ? -1 : 1) * (w / 2 - 20), y + 100);
     }
 
+    // Statuszeile über dem HUD: Schild, Raketen und die Zeit-Power-ups mit Restbalken
+    powerRow(g, st, y) {
+      const c = this.c, POW = GameConst.POWERS, items = [];
+      if (g.shield > 0) items.push({ t: 'SHIELD ' + '|'.repeat(g.shield), col: POW.S.color });
+      if (g.missileLvl > 0) items.push({ t: 'MISSILES ' + 'I'.repeat(g.missileLvl), col: POW.M.color });
+      const beatLen = 60 / g.L.bpm, span = 32 * beatLen;
+      if (g.rapidOn) items.push({ t: 'RAPID', col: POW.R.color, k: (g.rapidEnd - st.songT) / span });
+      if (g.doubleOn) items.push({ t: 'SCORE x2', col: POW.X.color, k: (g.doubleEnd - st.songT) / span });
+      if (!items.length) return;
+      const gap = 230, x0 = W / 2 - (items.length - 1) * gap / 2;
+      items.forEach((it, i) => {
+        const x = x0 + i * gap;
+        this.glowText(it.t, `700 18px ${FONT}`, it.col, it.col, 6, x, y);
+        if (it.k !== undefined) {
+          c.fillStyle = 'rgba(255,255,255,0.15)';
+          c.fillRect(x - 60, y + 8, 120, 3);
+          c.fillStyle = it.col;
+          c.fillRect(x - 60, y + 8, 120 * clamp(it.k, 0, 1), 3);
+        }
+      });
+    }
+
     hud(g, st) {
       const c = this.c, y = 950;
-      this.gauge(110, y, 440, g.charge, false, 'ABCD'[g.weapon - 1], 'player', 'HYPER  [X]', g.charge >= 1);
+      this.gauge(110, y, 440, g.charge, false, 'ABCDE'[g.weapon - 1], 'player', 'HYPER  [X]', g.charge >= 1);
+      this.powerRow(g, st, y - 22);
       this.gauge(W - 110, y, 440, g.droneE, true, g.droneMode ? 'B' : 'A', 'drone', 'DRONE  [C]', false);
       this.glowText(String(Math.floor(g.score)).padStart(8, '0'), `700 62px ${FONT}`, '#e8fbff', '#3fb4ff', 16, W / 2, y + 48);
       c.fillStyle = 'rgba(143,224,255,0.8)';

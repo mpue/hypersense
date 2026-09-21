@@ -326,8 +326,21 @@
 
     // ---------- Spieler (sofort) ----------
 
-    playerShot() {
-      if (this.ctx) this._noise(this.playerBus, 0.035, 6000, 0.07, undefined, 'highpass', 0.7);
+    // Schuss mit Körper: heller Anriss + kurzer tiefer Stoß, mit der Waffenstufe mehr Druck
+    playerShot(level = 1) {
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      this._noise(this.playerBus, 0.04, 5000, 0.08 + 0.01 * level, t, 'highpass', 0.7);
+      this._tone(this.playerBus, 190 + 10 * level, 0.05, 'square', 0.035 + 0.008 * level, t, 70);
+    }
+    missile() {
+      if (this.ctx) this._noise(this.playerBus, 0.3, 700, 0.14, undefined, 'bandpass', 1.5, 3500);
+    }
+    shieldHit() {
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      this._tone(this.playerBus, 1800, 0.35, 'sine', 0.3, t, 300);
+      this._noise(this.playerBus, 0.3, 3000, 0.3, t, 'bandpass', 2, 600);
     }
     playerDie() {
       if (!this.ctx) return;
@@ -340,10 +353,14 @@
     droneLost() {
       if (this.ctx) this._variant(this.playerBus, 'small', 3, this.ctx.currentTime, 0.9);
     }
-    powerup() {
+    // Jedes Power-up hat seine eigene kleine Tonfolge
+    powerup(type = 'W') {
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
-      [0, 4, 7, 12].forEach((s, i) => this._tone(this.playerBus, 784 * Math.pow(2, s / 12), 0.12, 'triangle', 0.3, t + i * 0.045));
+      const seq = { W: [0, 4, 7, 12], S: [0, 7, 12, 19], E: [0, 5, 9, 12], M: [12, 7, 12, 19], R: [0, 12, 0, 12, 24],
+        X: [0, 3, 7, 10, 15], L: [0, 4, 7, 12, 16, 19, 24] }[type] || [0, 4, 7, 12];
+      const wave = type === 'M' || type === 'R' ? 'square' : 'triangle';
+      seq.forEach((s, i) => this._tone(this.playerBus, 523 * Math.pow(2, s / 12), 0.12, wave, 0.28, t + i * 0.05));
     }
     hyper() {
       if (!this.ctx) return;
