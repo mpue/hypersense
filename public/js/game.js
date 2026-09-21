@@ -686,8 +686,11 @@
         let ix = input.x, iy = input.y;
         const len = Math.hypot(ix, iy);
         if (len > 1) { ix /= len; iy /= len; }
-        p.x = clamp(p.x + ix * sp * dt, BOUNDS.x0, BOUNDS.x1);
-        p.y = clamp(p.y + iy * sp * dt, BOUNDS.y0, BOUNDS.y1);
+        // Touch: das Schiff folgt der Zieh-Strecke des Fingers direkt
+        const dx = input.dragX || 0, dy = input.dragY || 0;
+        p.x = clamp(p.x + ix * sp * dt + dx, BOUNDS.x0, BOUNDS.x1);
+        p.y = clamp(p.y + iy * sp * dt + dy, BOUNDS.y0, BOUNDS.y1);
+        if (dy) iy = clamp(dy / (sp * Math.max(dt, 1 / 120)), -1, 1);
         p.tilt += (iy - p.tilt) * Math.min(1, dt * 10);
         if (p.inv <= 0 && !this.hyperOn && this.inHull(p.x, p.y, 14)) { this.killPlayer(); if (!p.alive) return; }
       }

@@ -3,12 +3,40 @@ html, body {
   height: 100%;
   background: #000;
   overflow: hidden;
+  overscroll-behavior: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Dreh-Hinweis für Handys im Hochformat (das Spiel pausiert dann) */
+#rotate {
+  display: none;
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  background: rgba(2, 3, 10, 0.94);
+  color: #cdefff;
+  font-family: "Orbitron", sans-serif;
+  text-align: center;
+  flex-direction: column;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+  font-size: 15px;
+}
+#rotate .big { font-size: 26px; font-weight: 900; color: #e8fbff; text-shadow: 0 0 18px #3fb4ff; }
+#rotate .icon { font-size: 64px; color: #8fe0ff; }
+@media (orientation: portrait) and (pointer: coarse) {
+  #rotate { display: flex; }
 }
 
 canvas {
   display: block;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;       /* Handy: ohne die ein- und ausfahrende Adressleiste */
   object-fit: contain;
   cursor: none;
   touch-action: none;

@@ -8,6 +8,13 @@
   const easeOut = x => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
   const FONT = '"Orbitron", "Segoe UI", sans-serif';
 
+  // Touch-Knöpfe (in 1920×1080-Koordinaten), rechts für den Daumen
+  const TOUCH = {
+    hyper: { x: 1740, y: 760, r: 100 },
+    drone: { x: 1555, y: 868, r: 60 },
+    pause: { x: 1855, y: 75, r: 48 },
+  };
+
   // Weich leuchtender Punkt als vorgerendertes Bild (für Geschosse, Mündungsfeuer, Explosionen ohne Sprite)
   function glow(color, r, core = 0.25) {
     const c = document.createElement('canvas');
@@ -36,8 +43,13 @@
   }
 
   class Renderer {
-    constructor(canvas, images) {
+    // res: interne Auflösung relativ zu 1920×1080 (Handys rechnen mit 2/3 = 1280×720).
+    // Gezeichnet wird immer in 1920×1080-Koordinaten, die Skalierung übernimmt die Grundtransformation.
+    constructor(canvas, images, res = 1) {
       this.cv = canvas;
+      this.res = res;
+      canvas.width = Math.round(W * res);
+      canvas.height = Math.round(H * res);
       // Deckende Zeichenfläche: der Browser muss nichts dahinter durchscheinen lassen
       this.c = canvas.getContext('2d', { alpha: false });
       this.quality = 'high';          // 'low' spart Vollbild-Ebenen und Leuchteffekte
@@ -149,8 +161,8 @@
     // ------------------------------------------------------------------ Bild
 
     frame(dt, g, st) {
-      const c = this.c;
-      c.setTransform(1, 0, 0, 1, 0, 0);
+      const c = this.c, r = this.res;
+      c.setTransform(r, 0, 0, r, 0, 0);
       const drop = g && g.L.dropBeats.some(d => st.beat >= d && st.beat < d + 8);
       this.warp += ((drop || st.mode === 'title' ? 1 : 0) - this.warp) * Math.min(1, dt * 2);
       // Hintergrund an das Welt-Scrollen gekoppelt (Pixel pro Beat × Tempo), Parallaxe über die Ebenen
@@ -161,7 +173,7 @@
       if (g && g.shake > 0) c.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
       this.background(dt, speed, st);
       if (g) this.world(g, st);
-      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.setTransform(r, 0, 0, r, 0, 0);
       this.foreground(dt, speed);
       if (g && g.flash > 0) {
         c.fillStyle = `rgba(200,230,255,${g.flash * 0.55})`;
@@ -698,9 +710,13 @@
       c.fillText(st.status, W / 2, 640);
       c.font = `400 22px ${FONT}`;
       c.fillStyle = 'rgba(205,239,255,0.7)';
-      const help = ['LEFT / RIGHT  choose song      ENTER  start',
-        'ARROWS / WASD  fly      SHIFT  slow      SPACE / J  fire',
-        'X  HYPER beam      C  drone mode      P / ESC  pause      F  fullscreen'];
+      const help = st.touch
+        ? ['TAP LEFT / RIGHT EDGE  choose song      TAP CENTER  start',
+          'DRAG ANYWHERE  fly  (auto-fire)',
+          'HYPER button  beam      DRONE button  drone mode']
+        : ['LEFT / RIGHT  choose song      ENTER  start',
+          'ARROWS / WASD  fly      SHIFT  slow      SPACE / J  fire',
+          'X  HYPER beam      C  drone mode      P / ESC  pause      F  fullscreen'];
       help.forEach((l, i) => c.fillText(l, W / 2, 780 + i * 38));
     }
 
@@ -734,6 +750,44 @@
       c.fillText('PRESS ENTER', W / 2, 850);
     }
 
+    // Touch-Steuerung: HYPER mit Ladering, Drohnen-Modus, Pause, dazu ein Ring am ziehenden Finger
+    touchUI(g, st) {
+      const c = this.c;
+      const ring = (b, fill, stroke) => {
+        c.fillStyle = fill;
+        c.beginPath(); c.arc(b.x, b.y, b.r, 0, TAU); c.fill();
+        c.strokeStyle = stroke; c.lineWidth = 3;
+        c.beginPath(); c.arc(b.x, b.y, b.r, 0, TAU); c.stroke();
+      };
+      const h = TOUCH.hyper, ready = g.charge >= 1;
+      ring(h, ready ? 'rgba(60,140,80,0.35)' : 'rgba(10,20,40,0.4)', 'rgba(143,224,255,0.35)');
+      c.strokeStyle = ready ? (Math.floor(performance.now() / 150) % 2 ? '#ffffff' : '#9dff8a') : '#8fe0ff';
+      c.lineWidth = 9;
+      c.beginPath(); c.arc(h.x, h.y, h.r - 10, -Math.PI / 2, -Math.PI / 2 + TAU * clamp(g.charge, 0, 1)); c.stroke();
+      this.glowText('HYPER', `700 26px ${FONT}`, ready ? '#ffffff' : 'rgba(205,239,255,0.8)', '#3fb4ff', ready ? 10 : 0, h.x, h.y + 10);
+      const d = TOUCH.drone;
+      ring(d, 'rgba(10,20,40,0.4)', 'rgba(143,224,255,0.35)');
+      this.glowText(g.droneMode ? 'B' : 'A', `700 34px ${FONT}`, '#dff6ff', '', 0, d.x, d.y + 4);
+      this.glowText('DRONE', `600 14px ${FONT}`, 'rgba(205,239,255,0.7)', '', 0, d.x, d.y + 26);
+      const p = TOUCH.pause;
+      ring(p, 'rgba(10,20,40,0.4)', 'rgba(143,224,255,0.35)');
+      c.fillStyle = '#dff6ff';
+      c.fillRect(p.x - 13, p.y - 16, 9, 32);
+      c.fillRect(p.x + 4, p.y - 16, 9, 32);
+      if (st.finger) {
+        c.strokeStyle = 'rgba(143,224,255,0.3)'; c.lineWidth = 3;
+        c.beginPath(); c.arc(st.finger.x, st.finger.y, 46, 0, TAU); c.stroke();
+      }
+    }
+
+    rotateHint() {
+      const c = this.c;
+      c.fillStyle = 'rgba(2,3,10,0.92)';
+      c.fillRect(0, 0, W, H);
+      this.glowText('ROTATE YOUR DEVICE', `900 90px ${FONT}`, '#e8fbff', '#3fb4ff', 24, W / 2, H / 2);
+      this.glowText('Hypersense is played in landscape', `400 40px ${FONT}`, 'rgba(205,239,255,0.8)', '', 0, W / 2, H / 2 + 90);
+    }
+
     paused() {
       const c = this.c;
       c.fillStyle = 'rgba(2,3,10,0.55)';
@@ -745,5 +799,6 @@
     }
   }
 
+  Renderer.TOUCH = TOUCH;
   window.Renderer = Renderer;
 })();
