@@ -32,6 +32,7 @@ SPRITES = {
     "worm_head": ("worm_head_11", 260, 260),
     "worm_segment": ("worm_segment_11", 200, 200),
     "splitter": ("splitter_11", 300, 300),
+    "coin": ("coin_11", 96, 96),
     "hull1": ("hull_11", 1536, 512),
     "hull2": ("hull_23", 1536, 512),
     "hull3": ("hull_37", 1536, 512),
@@ -43,6 +44,9 @@ ADDITIVE = {  # name: (raw file, max width)
     "explosion": ("explosion_11", 512),
 }
 PLANET = ("planet_gas_11", 1024)
+BACKDROPS = {  # name: (raw file, max width) – deckende Vollbild-Hintergründe
+    "incubator": ("incubator_11", 1536),
+}
 TEXTURES = {  # name: (raw file, size) – deckend, als Kachel
     "hulltex1": ("hulltex_11", 512),
     "hulltex2": ("hulltex_23", 512),
@@ -111,6 +115,14 @@ def main():
         im.thumbnail((mw, mw), Image.LANCZOS)
         im.save(OUT / f"{name}.jpg", quality=88)
         print("additive", name)
+    for name, (src, mw) in BACKDROPS.items():
+        f = RAW / f"{src}.png"
+        if not f.exists():
+            print("missing", f.name); continue
+        im = Image.open(f).convert("RGB")
+        im.thumbnail((mw, mw), Image.LANCZOS)
+        im.save(OUT / f"{name}.jpg", quality=86)
+        print("backdrop", name)
     for name, (src, size) in TEXTURES.items():
         f = RAW / f"{src}.png"
         if not f.exists():

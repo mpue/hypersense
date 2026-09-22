@@ -18,7 +18,7 @@
     powerup: 'powerup.png', turret: 'turret.png', dart: 'dart.png', mine: 'mine.png', carrier: 'carrier.png',
     worm_head: 'worm_head.png', worm_segment: 'worm_segment.png', splitter: 'splitter.png',
     hull1: 'hull1.png', hull2: 'hull2.png', hull3: 'hull3.png', hull4: 'hull4.png',
-    hulltex1: 'hulltex1.jpg', hulltex2: 'hulltex2.jpg', planet: 'planet.png', galaxy: 'galaxy.jpg', nebula: 'nebula.jpg', explosion: 'explosion.jpg',
+    hulltex1: 'hulltex1.jpg', hulltex2: 'hulltex2.jpg', coin: 'coin.png', incubator: 'incubator.jpg', planet: 'planet.png', galaxy: 'galaxy.jpg', nebula: 'nebula.jpg', explosion: 'explosion.jpg',
   };
 
   const loadImage = (name, file) => new Promise(res => {
@@ -67,11 +67,13 @@
 
     down(e) {
       if (this.onGesture) this.onGesture(e);          // Ton im Gesten-Handler freischalten (iOS verlangt das)
-      if (e.pointerType === 'mouse') { this.hit.add('Click'); return; }
+      const p = this.toGame(e);
+      // In Menüs zählt ein Tippen/Klick mit seiner Position (Knöpfe, Liste, Song-Pfeile)
+      if (this.getMode() !== 'play') { this.tap = p; if (e.pointerType !== 'mouse') this.touch = true; return; }
+      if (e.pointerType === 'mouse') return;
       e.preventDefault();
       this.touch = true;
-      const p = this.toGame(e), T = Renderer.TOUCH, on = b => Math.hypot(p.x - b.x, p.y - b.y) < b.r + 24;
-      if (this.getMode() !== 'play') { this.tap = p; return; }
+      const T = Renderer.TOUCH, on = b => Math.hypot(p.x - b.x, p.y - b.y) < b.r + 24;
       if (on(T.hyper)) { this.hit.add('TouchHyper'); return; }
       if (on(T.drone)) { this.hit.add('TouchDrone'); return; }
       if (on(T.pause)) { this.hit.add('Escape'); return; }
@@ -103,8 +105,10 @@
       let hyper = h('KeyX') || h('KeyK');
       let drone = h('KeyC') || h('KeyL');
       let pause = h('Escape') || h('KeyP');
-      let start = h('Enter') || h('NumpadEnter') || h('Space') || h('Click');
+      let start = h('Enter') || h('NumpadEnter') || h('Space');
       let prev = h('ArrowLeft') || h('KeyA'), next = h('ArrowRight') || h('KeyD');
+      let up = h('ArrowUp') || h('KeyW'), down = h('ArrowDown') || h('KeyS');
+      let back = h('Escape') || h('Backspace'), inc = h('KeyI');
       const stats = h('F3'), quality = h('KeyG');
 
       const pad = navigator.getGamepads ? [...navigator.getGamepads()].find(p => p) : null;
@@ -122,6 +126,10 @@
         start = start || edge(0) || edge(9);
         prev = prev || edge(14);
         next = next || edge(15);
+        up = up || edge(12);
+        down = down || edge(13);
+        back = back || edge(1);
+        inc = inc || edge(3);
         this.padPrev = pad.buttons.map(bt => bt.pressed);
       }
       if (h('KeyF')) {
@@ -138,7 +146,7 @@
       this.tap = null;
       this.hit.clear();
       return { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)), fire, focus, hyper, drone, pause, start, prev, next, stats, quality,
-        dragX, dragY, tap, touch: this.touch, finger: this.finger };
+        up, down, back, inc, dragX, dragY, tap, touch: this.touch, finger: this.finger };
     }
   }
 
@@ -221,7 +229,7 @@
     audio.ensure();
     audio.resume();
     audio.muffle(false, 0.01);
-    game = new Game(level, audio, { god: params.get('god') === '1', autoFire: params.get('auto') === '1' });
+    game = new Game(level, audio, { god: params.get('god') === '1', autoFire: params.get('auto') === '1', stats: save.stats() });
     const from = Number(params.get('at')) || 0;
     audio.play(buffer, from > 0 ? from : -2);
     if (from > 0) game.seek(from);
@@ -232,6 +240,57 @@
     mode = 'results';
     hi = Math.max(hi, Math.floor(game.score));
     try { localStorage.setItem(hiKey(), String(hi)); } catch (e) { /* kein Speicher */ }
+    save.bank(game.runCoins);          // auch bei Game Over: gesammelt ist gesammelt
+  }
+
+  // ------------------------------------------------------------------ Incubator
+  // HyperCoins aus den Läufen gegen dauerhafte Upgrades tauschen. ?coins=N gibt für Tests Münzen dazu.
+  const save = new Meta.Save();
+  if (params.get('coins')) save.coins += Number(params.get('coins')) || 0;
+  const inc = { save, sel: 0, msg: '', msgT: 0, msgOk: true, flash: 0, touch: false, from: 'title' };
+
+  function openIncubator() {
+    inc.from = mode;
+    inc.msgT = 0;
+    mode = 'incubator';
+    audio.menuMove();
+  }
+
+  function buySelected() {
+    const u = Meta.UPGRADES[inc.sel], price = save.priceOf(u);
+    if (save.buy(u)) {
+      audio.buy();
+      inc.flash = 1;
+      inc.msg = `${u.name}  LEVEL ${save.level(u.id)}`;
+      inc.msgOk = true;
+    } else {
+      audio.deny();
+      inc.msg = price === null ? 'ALREADY MAXED' : 'NOT ENOUGH HYPERCOINS';
+      inc.msgOk = false;
+    }
+    inc.msgT = 1.8;
+  }
+
+  function stepIncubator(inp, dt) {
+    inc.touch = inp.touch || touchDevice;
+    inc.msgT = Math.max(0, inc.msgT - dt);
+    inc.flash = Math.max(0, inc.flash - dt * 2);
+    const n = Meta.UPGRADES.length, I = Renderer.INC;
+    if (inp.tap) {
+      const t = inp.tap, b = I.back;
+      if (t.x >= b.x && t.x <= b.x + b.w && t.y >= b.y && t.y <= b.y + b.h) inp.back = true;
+      else if (t.x >= I.x0 && t.x <= I.x0 + I.w && t.y >= I.y0 && t.y < I.y0 + n * I.rowH) {
+        const row = Math.floor((t.y - I.y0) / I.rowH);
+        if (row === inc.sel) buySelected(); else { inc.sel = row; audio.menuMove(); }
+      }
+    }
+    if (inp.up) { inc.sel = (inc.sel + n - 1) % n; audio.menuMove(); }
+    if (inp.down) { inc.sel = (inc.sel + 1) % n; audio.menuMove(); }
+    if (inp.start) buySelected();
+    if (inp.back || inp.pause || inp.inc) {
+      if (inc.from === 'results') { audio.stop(); game = null; }
+      mode = 'title';
+    }
   }
 
   // ------------------------------------------------------------------ Leistung
@@ -255,7 +314,8 @@
       perf.note = 'GRAPHICS: ' + perf.mode.toUpperCase(); perf.noteT = 2;
     }
     // Auto: 2 s lang im Schnitt über 21 ms pro Frame (unter ~48 fps) -> sparsam
-    if (perf.mode === 'auto' && renderer.quality === 'high' && mode === 'play') {
+    // Verdeckter Tab oder einzelne lange Aussetzer (> 100 ms) sagen nichts über die Grafiklast
+    if (perf.mode === 'auto' && renderer.quality === 'high' && mode === 'play' && !document.hidden && gap < 100) {
       perf.slow = gap > 21 ? perf.slow + gap / 1000 : Math.max(0, perf.slow - gap / 2000);
       if (perf.slow > 2) { renderer.quality = 'low'; perf.note = 'GRAPHICS: AUTO -> LOW'; perf.noteT = 3; }
     }
@@ -271,7 +331,7 @@
     const lines = [
       `FPS ${(1000 / g).toFixed(0)}   FRAME ${g.toFixed(1)} ms   WORST ${worst.toFixed(1)} ms   >20ms ${slowN}/120`,
       `JS ${avg(perf.cpu).toFixed(2)} ms   GFX ${perf.mode.toUpperCase()} (${renderer.quality})`,
-      game ? `ENEMIES ${game.enemies.length}   BULLETS ${game.bullets.length}   FX ${game.fx.length}` : '',
+      game ? `ENEMIES ${game.enemies.length}   BULLETS ${game.bullets.length}   FX ${game.fx.length}   RANK ${game.rank.toFixed(2)}` : '',
     ];
     c.fillStyle = 'rgba(0,0,0,0.6)';
     c.fillRect(10, 10, 760, 96);
@@ -293,16 +353,20 @@
       beat = level.map.beatOf(songT);
     }
 
-    // Tippen im Menü: linker/rechter Rand wählt den Song, sonst Start bzw. weiter
-    if (inp.tap) {
-      if (mode === 'title' && songs.length > 1 && (inp.tap.x < 560 || inp.tap.x > 1360)) {
-        if (inp.tap.x < 560) inp.prev = true; else inp.next = true;
+    // Tippen/Klicken im Titel: Incubator-Knopf, linker/rechter Rand wählt den Song, sonst Start bzw. weiter
+    if (inp.tap && mode !== 'incubator') {
+      const b = Renderer.INC.titleBtn, t = inp.tap;
+      if (mode === 'title' && t.x >= b.x && t.x <= b.x + b.w && t.y >= b.y && t.y <= b.y + b.h) inp.inc = true;
+      else if (mode === 'title' && songs.length > 1 && (t.x < 560 || t.x > 1360)) {
+        if (t.x < 560) inp.prev = true; else inp.next = true;
       } else inp.start = true;
     }
     const portrait = (inp.touch || touchDevice) && innerHeight > innerWidth;
 
-    if (mode === 'title') {
-      if (inp.start && level) start();
+    if (mode === 'incubator') stepIncubator(inp, dt);
+    else if (mode === 'title') {
+      if (inp.inc) openIncubator();
+      else if (inp.start && level) start();
       else if (songs.length > 1 && (inp.prev || inp.next)) selectSong(songIdx + (inp.next ? 1 : -1));
     } else if (mode === 'play') {
       if (inp.pause || portrait) { mode = 'paused'; audio.pause(); }
@@ -314,18 +378,22 @@
     } else if (mode === 'paused') {
       if ((inp.pause || inp.start) && !portrait) { audio.resume(); mode = 'play'; }
     } else if (mode === 'results') {
-      if (inp.start) { audio.stop(); game = null; mode = 'title'; }
+      if (inp.inc) openIncubator();
+      else if (inp.start) { audio.stop(); game = null; mode = 'title'; }
     }
 
     const st = { mode, songT, beat, levels: audio.ctx ? audio.levels() : [0, 0, 0], songName: song ? song.name : '',
       finger: inp.finger, touch: inp.touch || touchDevice };
-    renderer.frame(dt, mode === 'title' || mode === 'loading' ? null : game, st);
-    if (mode === 'title' || mode === 'loading') {
-      renderer.title({ ...st, status, subtitle, ready: !!level, pick: songs.length > 1, hi });
+    if (mode === 'incubator') renderer.incubator(inc, dt);
+    else {
+      renderer.frame(dt, mode === 'title' || mode === 'loading' ? null : game, st);
+      if (mode === 'title' || mode === 'loading') {
+        renderer.title({ ...st, status, subtitle, ready: !!level, pick: songs.length > 1, hi, bank: save.coins });
+      }
+      if (mode === 'play' && inp.touch) renderer.touchUI(game, st);
+      if (mode === 'paused') renderer.paused();
+      if (mode === 'results') renderer.results(game, { hi, bank: save.coins, touch: st.touch });
     }
-    if (mode === 'play' && inp.touch) renderer.touchUI(game, st);
-    if (mode === 'paused') renderer.paused();
-    if (mode === 'results') renderer.results(game, { hi });
     if (portrait) renderer.rotateHint();
     trackPerf(gap, performance.now() - cpu0, inp);
     drawPerf(dt);

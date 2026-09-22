@@ -8,6 +8,10 @@
   const easeOut = x => 1 - Math.pow(1 - clamp(x, 0, 1), 3);
   const FONT = '"Orbitron", "Segoe UI", sans-serif';
 
+  // Incubator-Layout (auch für die Treffer-Tests der Touch-/Maus-Eingabe in main.js)
+  const INC = { x0: 1000, y0: 215, rowH: 78, w: 830, back: { x: 70, y: 950, w: 280, h: 80 },
+    titleBtn: { x: W / 2 - 230, y: 675, w: 460, h: 70 } };
+
   // Touch-Knöpfe (in 1920×1080-Koordinaten), rechts für den Daumen
   const TOUCH = {
     hyper: { x: 1740, y: 760, r: 100 },
@@ -367,6 +371,23 @@
         this.glowText(pw.label, `900 ${pw.label.length > 2 ? 18 : 26}px ${FONT}`, '#ffffff', pw.color, 8, it.x, it.y + 10);
       }
 
+      // HyperCoins: drehen sich (Breite pendelt), mit goldenem Glühen
+      if (!this.glows.gold) this.glows.gold = glow('#ffd24a', 32);
+      for (const cn of g.coins) {
+        const sx = Math.abs(Math.cos(cn.t * 5)) * 0.8 + 0.2;
+        c.globalCompositeOperation = 'lighter';
+        this.dot(this.glows.gold, cn.x, cn.y, 26, 0.55);
+        c.globalCompositeOperation = 'source-over';
+        const im = this.img.coin;
+        if (im) {
+          const h = 34, w = h * im.width / im.height * sx;
+          c.drawImage(im, cn.x - w / 2, cn.y - h / 2, w, h);
+        } else {
+          c.fillStyle = '#ffd24a';
+          c.beginPath(); c.ellipse(cn.x, cn.y, 14 * sx, 14, 0, 0, TAU); c.fill();
+        }
+      }
+
       // Spielerschüsse und Raketen VOR den Gegnern zeichnen: die Gegner liegen obenauf und
       // werden vom additiven Leuchten der Schüsse nicht überstrahlt
       c.globalCompositeOperation = 'lighter';
@@ -375,6 +396,7 @@
         c.save();
         c.translate(s.x, s.y);
         c.rotate(a);
+        if (s.range !== Infinity) c.globalAlpha = clamp(s.range / 180, 0, 1);   // Fächer verglüht
         if (s.kind === 'lance') {
           // Plasma-Speer: langer, heller Strahl mit Glühen
           c.drawImage(this.glows.blue, -90, -18, 130, 36);
@@ -632,9 +654,9 @@
       const c = this.c, POW = GameConst.POWERS, items = [];
       if (g.shield > 0) items.push({ t: 'SHIELD ' + '|'.repeat(g.shield), col: POW.S.color });
       if (g.missileLvl > 0) items.push({ t: 'MISSILES ' + 'I'.repeat(g.missileLvl), col: POW.M.color });
-      const beatLen = 60 / g.L.bpm, span = 32 * beatLen;
-      if (g.rapidOn) items.push({ t: 'RAPID', col: POW.R.color, k: (g.rapidEnd - st.songT) / span });
-      if (g.doubleOn) items.push({ t: 'SCORE x2', col: POW.X.color, k: (g.doubleEnd - st.songT) / span });
+      const beatLen = 60 / g.L.bpm;
+      if (g.rapidOn) items.push({ t: 'RAPID', col: POW.R.color, k: (g.rapidEnd - st.songT) / (16 * beatLen) });
+      if (g.doubleOn) items.push({ t: 'SCORE x2', col: POW.X.color, k: (g.doubleEnd - st.songT) / (32 * beatLen) });
       if (!items.length) return;
       const gap = 230, x0 = W / 2 - (items.length - 1) * gap / 2;
       items.forEach((it, i) => {
@@ -649,8 +671,19 @@
       });
     }
 
+    // Münz-Symbol mit Zahl (HUD, Incubator, Titel)
+    coinLabel(x, y, n, size = 30, align = 'left') {
+      const t = String(n), font = `700 ${size}px ${FONT}`;
+      this.c.font = font;
+      const tw = this.c.measureText(t).width, icon = size * 1.15;
+      const x0 = align === 'right' ? x - tw - icon - 10 : align === 'center' ? x - (tw + icon + 10) / 2 : x;
+      if (this.img.coin) this.c.drawImage(this.img.coin, x0, y - icon * 0.78, icon, icon);
+      this.glowText(t, font, '#ffe07a', '#ffb020', 8, x0 + icon + 10, y, 'left');
+    }
+
     hud(g, st) {
       const c = this.c, y = 950;
+      this.coinLabel(40, 62, g.runCoins, 30);
       this.gauge(110, y, 440, g.charge, false, 'ABCDE'[g.weapon - 1], 'player', 'HYPER  [X]', g.charge >= 1);
       this.powerRow(g, st, y - 22);
       this.gauge(W - 110, y, 440, g.droneE, true, g.droneMode ? 'B' : 'A', 'drone', 'DRONE  [C]', false);
@@ -707,9 +740,18 @@
       }
       c.font = `600 30px ${FONT}`;
       c.fillStyle = st.ready ? `rgba(232,251,255,${0.55 + 0.45 * Math.sin(performance.now() / 250)})` : '#cdefff';
-      c.fillText(st.status, W / 2, 640);
+      c.fillText(st.status, W / 2, 620);
+      // Knopf zum Incubator mit dem Münzkonto
+      const b = INC.titleBtn;
+      c.fillStyle = 'rgba(10,24,48,0.6)';
+      c.fillRect(b.x, b.y, b.w, b.h);
+      c.strokeStyle = 'rgba(255,210,74,0.7)'; c.lineWidth = 2;
+      c.strokeRect(b.x, b.y, b.w, b.h);
+      this.glowText(st.touch ? 'INCUBATOR' : 'INCUBATOR  [ I ]', `700 26px ${FONT}`, '#ffe07a', '#ffb020', 6, b.x + 24, b.y + 46, 'left');
+      this.coinLabel(b.x + b.w - 20, b.y + 46, st.bank || 0, 24, 'right');
       c.font = `400 22px ${FONT}`;
       c.fillStyle = 'rgba(205,239,255,0.7)';
+      c.textAlign = 'center';
       const help = st.touch
         ? ['TAP LEFT / RIGHT EDGE  choose song      TAP CENTER  start',
           'DRAG ANYWHERE  fly  (auto-fire)',
@@ -717,7 +759,78 @@
         : ['LEFT / RIGHT  choose song      ENTER  start',
           'ARROWS / WASD  fly      SHIFT  slow      SPACE / J  fire',
           'X  HYPER beam      C  drone mode      P / ESC  pause      F  fullscreen'];
-      help.forEach((l, i) => c.fillText(l, W / 2, 780 + i * 38));
+      help.forEach((l, i) => c.fillText(l, W / 2, 810 + i * 38));
+    }
+
+    // Incubator: Werft mit dem Schiff in der Kammer links, Upgrade-Liste rechts
+    incubator(ui, dt) {
+      const c = this.c, save = ui.save, U = Meta.UPGRADES, t = performance.now() / 1000;
+      c.setTransform(this.res, 0, 0, this.res, 0, 0);
+      const bg = this.img.incubator;
+      if (bg) {
+        c.drawImage(bg, 0, 0, W, H);
+        c.fillStyle = 'rgba(2,4,12,0.45)';
+        c.fillRect(0, 0, W, H);
+      } else { c.fillStyle = '#040816'; c.fillRect(0, 0, W, H); }
+      // Kammer: Leuchtring, Scan-Linie, das Schiff schwebt
+      // Schiff über der Plattform des Hintergrundbilds (bei ~32 % Breite, ~71 % Höhe)
+      const sx = 615, sy = 560, py = 770;
+      c.globalCompositeOperation = 'lighter';
+      this.dot(this.glows.blue, sx, py - 40, 280 + 12 * Math.sin(t * 2), 0.3);
+      c.strokeStyle = 'rgba(120,220,255,0.6)'; c.lineWidth = 3;
+      c.beginPath(); c.ellipse(sx, py, 250, 46, 0, 0, TAU); c.stroke();
+      c.strokeStyle = 'rgba(120,220,255,0.25)';
+      c.beginPath(); c.ellipse(sx, py, 290 + 20 * ((t * 0.7) % 1), 56 + 6 * ((t * 0.7) % 1), 0, 0, TAU); c.stroke();
+      c.globalCompositeOperation = 'source-over';
+      const bob = Math.sin(t * 1.6) * 10;
+      this.spr('player', sx, sy + bob, 170 + (ui.flash || 0) * 30);
+      if (ui.flash > 0) {
+        c.globalCompositeOperation = 'lighter';
+        this.dot(this.glows.white, sx, sy + bob, 200 * ui.flash, ui.flash);
+        c.globalCompositeOperation = 'source-over';
+      }
+      const scanY = sy - 90 + ((t * 0.8) % 1) * 180;
+      c.fillStyle = 'rgba(120,220,255,0.35)';
+      c.fillRect(sx - 220, scanY, 440, 2);
+      // Kopf
+      this.glowText('INCUBATOR', `900 76px ${FONT}`, '#e8fbff', '#3fb4ff', 24, 90, 140, 'left');
+      this.glowText('upgrade your ship with HyperCoins', `400 24px ${FONT}`, 'rgba(205,239,255,0.8)', '', 0, 94, 184, 'left');
+      this.coinLabel(1840, 130, save.coins, 44, 'right');
+      // Liste
+      U.forEach((u, i) => {
+        const y = INC.y0 + i * INC.rowH, sel = i === ui.sel, lvl = save.level(u.id), price = save.priceOf(u);
+        const afford = price !== null && price <= save.coins;
+        c.fillStyle = sel ? 'rgba(40,110,170,0.45)' : 'rgba(8,18,36,0.55)';
+        c.fillRect(INC.x0, y, INC.w, INC.rowH - 10);
+        if (sel) { c.strokeStyle = '#8fe0ff'; c.lineWidth = 2; c.strokeRect(INC.x0, y, INC.w, INC.rowH - 10); }
+        this.glowText(u.name, `700 26px ${FONT}`, sel ? '#ffffff' : '#cdefff', '', 0, INC.x0 + 22, y + 44, 'left');
+        // Stufen-Punkte
+        for (let k = 0; k < u.max; k++) {
+          c.fillStyle = k < lvl ? '#9dff8a' : 'rgba(143,224,255,0.25)';
+          c.fillRect(INC.x0 + 400 + k * 30, y + 26, 22, 16);
+        }
+        if (price === null) this.glowText('MAX', `700 24px ${FONT}`, '#9dff8a', '', 0, INC.x0 + INC.w - 24, y + 44, 'right');
+        else {
+          c.globalAlpha = afford ? 1 : 0.45;
+          this.coinLabel(INC.x0 + INC.w - 24, y + 44, price, 24, 'right');
+          c.globalAlpha = 1;
+        }
+      });
+      // Beschreibung und Rückmeldung
+      const u = U[ui.sel];
+      this.glowText(u.desc, `400 24px ${FONT}`, '#dff6ff', '', 0, INC.x0, INC.y0 + U.length * INC.rowH + 36, 'left');
+      if (ui.msgT > 0) {
+        c.globalAlpha = Math.min(1, ui.msgT * 2);
+        this.glowText(ui.msg, `700 34px ${FONT}`, ui.msgOk ? '#9dff8a' : '#ff7a8a', '', 0, sx, 860);
+        c.globalAlpha = 1;
+      }
+      // Zurück-Knopf und Hilfe
+      const b = INC.back;
+      c.fillStyle = 'rgba(8,18,36,0.7)'; c.fillRect(b.x, b.y, b.w, b.h);
+      c.strokeStyle = 'rgba(143,224,255,0.6)'; c.lineWidth = 2; c.strokeRect(b.x, b.y, b.w, b.h);
+      this.glowText('BACK', `700 28px ${FONT}`, '#dff6ff', '', 0, b.x + b.w / 2, b.y + 52);
+      this.glowText(ui.touch ? 'tap an upgrade to select, tap again to buy' : 'UP / DOWN select     ENTER buy     ESC back',
+        `400 22px ${FONT}`, 'rgba(205,239,255,0.7)', '', 0, b.x + b.w + 40, b.y + 50, 'left');
     }
 
     results(g, st) {
@@ -741,13 +854,15 @@
         ['HIGH SCORE', String(st.hi).padStart(8, '0')],
       ];
       rows.forEach(([k, v], i) => {
-        c.textAlign = 'right'; c.fillText(k, W / 2 - 30, 430 + i * 64);
-        c.textAlign = 'left'; c.fillText(v, W / 2 + 30, 430 + i * 64);
+        c.textAlign = 'right'; c.fillText(k, W / 2 - 30, 410 + i * 60);
+        c.textAlign = 'left'; c.fillText(v, W / 2 + 30, 410 + i * 60);
       });
+      c.textAlign = 'right'; c.fillText('HYPERCOINS', W / 2 - 30, 410 + rows.length * 60);
+      this.coinLabel(W / 2 + 30, 410 + rows.length * 60, '+' + g.runCoins + '   (' + st.bank + ')', 32);
       c.textAlign = 'center';
       c.font = `600 30px ${FONT}`;
       c.fillStyle = `rgba(232,251,255,${0.55 + 0.45 * Math.sin(performance.now() / 250)})`;
-      c.fillText('PRESS ENTER', W / 2, 850);
+      c.fillText(st.touch ? 'TAP TO CONTINUE' : 'ENTER  continue      I  incubator', W / 2, 880);
     }
 
     // Touch-Steuerung: HYPER mit Ladering, Drohnen-Modus, Pause, dazu ein Ring am ziehenden Finger
@@ -800,5 +915,6 @@
   }
 
   Renderer.TOUCH = TOUCH;
+  Renderer.INC = INC;
   window.Renderer = Renderer;
 })();

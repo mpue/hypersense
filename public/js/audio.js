@@ -353,6 +353,28 @@
     droneLost() {
       if (this.ctx) this._variant(this.playerBus, 'small', 3, this.ctx.currentTime, 0.9);
     }
+    // HyperCoin: kurzes helles Klingen, die Tonhöhe wandert mit dem Zähler durch eine Pentatonik
+    coin(n = 0) {
+      if (!this.ctx) return;
+      const steps = [0, 2, 4, 7, 9, 12, 14, 16];
+      const f = 1320 * Math.pow(2, steps[n % steps.length] / 12);
+      this._tone(this.playerBus, f, 0.07, 'sine', 0.12);
+      this._tone(this.playerBus, f * 2, 0.05, 'sine', 0.05);
+    }
+    // Incubator: Kauf bestätigt / nicht genug Münzen
+    buy() {
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      [0, 7, 12, 19, 24].forEach((s, i) => this._tone(this.playerBus, 440 * Math.pow(2, s / 12), 0.18, 'triangle', 0.28, t + i * 0.06));
+      this._noise(this.playerBus, 0.5, 400, 0.2, t, 'bandpass', 2, 5000);
+    }
+    deny() {
+      if (this.ctx) this._tone(this.playerBus, 180, 0.2, 'square', 0.12, undefined, 120);
+    }
+    menuMove() {
+      if (this.ctx) this._tone(this.playerBus, 880, 0.04, 'triangle', 0.08);
+    }
+
     // Jedes Power-up hat seine eigene kleine Tonfolge
     powerup(type = 'W') {
       if (!this.ctx) return;

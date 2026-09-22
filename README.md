@@ -74,6 +74,12 @@ Firewall eingehende Verbindungen auf Port 5180 für Node erlauben.
   Bei 0 fällt sie aus und lädt sich wieder auf.
 - **HYPER:** Die Ladung kommt aus Abschüssen. Dann schmilzt ein Takt lang ein Strahl alles in seiner Bahn,
   und der Spieler ist unverwundbar.
+- **Rang (Schwierigkeit):** Er setzt sich zu gut einem Drittel aus dem Songfortschritt und zum Rest aus der
+  aktuellen Ausrüstung zusammen und gleitet sanft zwischen 0 und 1. Mit steigendem Rang werden Gegner zäher
+  (bis etwa 2,5-fache HP) und ihre Geschosse schneller. Es feuern mehr Schützen pro Note, die Muster werden
+  dichter (Fächer, Nadel-Salven, 8er-Kreuz), und ab mittlerem Rang feuern Wracks auf der nächsten Achtel
+  zurück. Ein Tod kostet 2 Waffenstufen, eine Raketenstufe und den Schild, danach wird das Spiel wieder
+  gnädiger. F3 zeigt den aktuellen Rang.
 - **SYNC:** Ein Abschuss innerhalb von ±50 ms um einen Beat zählt doppelt und lädt HYPER doppelt.
 - **Kette:** Abschüsse ohne Pause von mehr als 4 Beats erhöhen den Multiplikator (bis ×8).
 - **Waffenstufen A–E:**
@@ -107,10 +113,26 @@ Firewall eingehende Verbindungen auf Port 5180 für Node erlauben.
 
 ### Gegner
 
-| Gegner | Verhalten |
+Die Wellen laufen auf zwei getrennten Spuren, damit kein Durcheinander entsteht:
+
+- **Formationen:** Kanonenfutter aus blauen Drohnen und Jägern. Es kommt eine Formation zur Zeit, alle 2 Takte
+  auf der Eins. Die Mitglieder sterben nach 2 Treffern, feuern kaum und werden mit dem Rang nicht zäher, nur
+  zahlreicher. Figuren (alle im Takt bewegt):
+  - Schlange: Kette auf einer Sinusbahn
+  - V-Keil: schwenkt auf jeder Eins
+  - Ring: dreht sich pro Beat eine Stufe weiter
+  - Zange: zwei Reihen von oben und unten laufen zur Mitte
+  - Wand: senkrechte Säule, die auf jedem Beat gemeinsam hüpft
+  - Looping: Überschlag in der Bildmitte
+  - Diagonale
+  - Jäger-Keil im Sturzflug
+  - Doppel-Schlange auf Drops
+- **Schwere Gegner:** höchstens alle 4 Takte einer, versetzt zwischen die Formationen. Von ihnen kommt
+  der Großteil des Feuers, und sie werden mit dem Rang zäher.
+
+| Schwerer Gegner | Verhalten |
 |---|---|
-| Blaue / orange Drohne | Ketten und V-Formationen, die sich auf jeder Eins versetzen |
-| Jäger | Sturzflug von oben und unten |
+| Orange Kampfdrohnen | fliegen zu zweit oder dritt ein, halten drei Takte und feuern Fächer |
 | Dart | macht auf jedem Beat einen Satz auf den Spieler zu |
 | Mine | hängt in der Welt, blinkt immer schneller und platzt auf einer Eins in 12 Kugeln |
 | Geschützturm | auf dem Stationsrumpf, feuert Nadel-Salven |
@@ -123,6 +145,32 @@ Firewall eingehende Verbindungen auf Port 5180 für Node erlauben.
 
 In lauten Passagen kommt jeden Takt eine Welle, sonst alle zwei Takte. Auf Drops blitzt und bebt es
 acht Beats lang auf jedem Schlag.
+
+### HyperCoins und Incubator
+
+- **Münzen:** Getötete Gegner verstreuen HyperCoins. Kanonenfutter gibt gelegentlich eine, schwere Gegner
+  mehrere, der Boss einen Regen. SYNC-Abschüsse geben eine extra, komplett abgeschossene Formationen einen
+  kleinen Regen. Die Münzen treiben mit der Welt und werden im Magnetradius eingesammelt.
+- **Gutschrift:** Am Laufende wandern die gesammelten Münzen auf das Konto, auch bei Game Over. Das Konto wird
+  im Browser gespeichert (`localStorage`).
+- **Incubator:** im Titel mit **I**, per Klick oder Touch auf den Knopf, auch vom Ergebnisbildschirm aus.
+  Dort gibt es dauerhafte Upgrades mit steigenden Preisen:
+
+  | Upgrade | Wirkung | Stufen |
+  |---|---|---|
+  | Firepower | +10 % Schaden für Schüsse und Raketen | 5 |
+  | Start Weapon | Start mit Waffe B/C, nach einem Tod nie darunter | 2 |
+  | Armor Plating | Start und Wiedereinstieg mit 1/2 Schild-Treffern | 2 |
+  | Extra Ship | +1 Leben | 2 |
+  | Drone Core | Drohne hält mehr aus und lädt schneller | 3 |
+  | Hyper Capacitor | HYPER lädt 25 % schneller | 3 |
+  | Magnet | größerer Einsammelradius für Münzen und Kapseln | 3 |
+  | Engine | +8 % Tempo | 3 |
+  | Missile Tube | Start mit einem Raketenrohr | 1 |
+
+  Ein kompletter Lauf bringt einem guten Spieler etwa 500–700 Münzen, alles zusammen kostet rund 4.200.
+  Der Rang berücksichtigt die Ausrüstung, das Spiel bleibt also auch voll ausgebaut fordernd.
+  Test-Schalter: `?coins=5000` gibt Münzen dazu.
 
 ### Wie der Takt die Gegner steuert (`public/js/level.js`, `public/js/game.js`)
 

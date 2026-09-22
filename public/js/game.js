@@ -14,7 +14,8 @@
   const PLAYER_R = 9;                // Trefferzone = Cockpit
   const SHOT_SPEED = 1900;
   const FIRE_RATE = 11;
-  const RAPID_RATE = 18;             // Schuss/s mit Power-up R
+  const RAPID_RATE = 13;             // Schuss/s mit Power-up R
+  const ENTRY_X = W - 90;            // Gegner rechts davon sind noch nicht treffbar (Einflugschutz)
   const MAX_WEAPON = 5;              // A..E
 
   // Power-ups: Buchstabe, Name, Farbe der Kapsel
@@ -36,43 +37,57 @@
 
   // rx/ry = Trefferellipse, h = Zeichenhöhe
   const KINDS = {
-    blue:    { hp: 3,   rx: 34,  ry: 34, score: 100,   sprite: 'enemy_blue',    h: 84,  shoots: true, cool: 2,   size: 1 },
-    orange:  { hp: 7,   rx: 40,  ry: 40, score: 250,   sprite: 'enemy_orange',  h: 96,  shoots: true, cool: 1.5, size: 1.3, drop: 0.3 },
-    fighter: { hp: 4,   rx: 50,  ry: 22, score: 200,   sprite: 'enemy_fighter', h: 62,  shoots: true, cool: 2,   size: 1, drop: 0.1 },
-    rock:    { hp: 12,  rx: 52,  ry: 52, score: 150,   sprite: 'asteroid',      h: 120, shoots: false, size: 1.5, drop: 0.15 },
-    cannon:  { hp: 45,  rx: 130, ry: 28, score: 800,   sprite: 'cannon',        h: 70,  shoots: false, size: 1.5, flip: true, drop: 1 },
+    // fodder = Kanonenfutter für Formationen: schwach, schießt kaum, wird mit dem Rang nicht zäher
+    blue:    { hp: 3,   rx: 34,  ry: 34, score: 100,   sprite: 'enemy_blue',    h: 84,  shoots: true, cool: 4,   size: 1, fodder: true },
+    orange:  { hp: 7,   rx: 40,  ry: 40, score: 250,   sprite: 'enemy_orange',  h: 96,  shoots: true, cool: 1.5, size: 1.3, drop: 0.15 },
+    fighter: { hp: 3,   rx: 50,  ry: 22, score: 150,   sprite: 'enemy_fighter', h: 62,  shoots: true, cool: 4,   size: 1, fodder: true },
+    rock:    { hp: 12,  rx: 52,  ry: 52, score: 150,   sprite: 'asteroid',      h: 120, shoots: false, size: 1.5, drop: 0.08 },
+    cannon:  { hp: 45,  rx: 130, ry: 28, score: 800,   sprite: 'cannon',        h: 70,  shoots: false, size: 1.5, flip: true, drop: 0.5 },
     boss:    { hp: 520, rx: 300, ry: 120, score: 20000, sprite: 'boss',         h: 440, shoots: true, cool: 0, size: 3 },
-    turret:  { hp: 6,   rx: 36,  ry: 30, score: 300,   sprite: 'turret',        h: 74,  shoots: true, cool: 1.5, size: 1.2, drop: 0.25 },
+    turret:  { hp: 6,   rx: 36,  ry: 30, score: 300,   sprite: 'turret',        h: 74,  shoots: true, cool: 1.5, size: 1.2, drop: 0.12 },
     dart:    { hp: 2,   rx: 34,  ry: 14, score: 150,   sprite: 'dart',          h: 34,  shoots: false, size: 1 },
     mine:    { hp: 4,   rx: 32,  ry: 32, score: 200,   sprite: 'mine',          h: 72,  shoots: false, size: 1.2 },
     carrier: { hp: 80,  rx: 180, ry: 70, score: 3000,  sprite: 'carrier',       h: 210, shoots: true, cool: 1, size: 2.6, drop: 1 },
-    wormhead:{ hp: 12,  rx: 42,  ry: 36, score: 500,   sprite: 'worm_head',     h: 92,  shoots: true, cool: 1, size: 1.3, drop: 1 },
+    wormhead:{ hp: 12,  rx: 42,  ry: 36, score: 500,   sprite: 'worm_head',     h: 92,  shoots: true, cool: 1, size: 1.3, drop: 0.6 },
     wormseg: { hp: 4,   rx: 30,  ry: 30, score: 80,    sprite: 'worm_segment',  h: 66,  shoots: false, size: 1 },
-    splitter:{ hp: 14,  rx: 50,  ry: 50, score: 400,   sprite: 'splitter',      h: 112, shoots: true, cool: 2, size: 1.3, drop: 0.4 },
+    splitter:{ hp: 14,  rx: 50,  ry: 50, score: 400,   sprite: 'splitter',      h: 112, shoots: true, cool: 2, size: 1.3, drop: 0.2 },
     shard:   { hp: 1,   rx: 22,  ry: 22, score: 60,    sprite: 'splitter',      h: 44,  shoots: false, size: 0.8 },
   };
+
+  // HyperCoins pro Abschuss: ganze Zahl = sichere Münzen, Nachkommaanteil = Chance auf eine weitere
+  const COINS = {
+    blue: 0.3, fighter: 0.3, dart: 1, mine: 1, rock: 2, orange: 3, turret: 3, splitter: 4, shard: 0,
+    wormseg: 0.3, wormhead: 8, cannon: 6, carrier: 12, boss: 60,
+  };
+  const NEUTRAL_STATS = { damage: 1, startWeapon: 1, armor: 0, lives: 3, droneDrain: 1, droneRegen: 1,
+    hyperGain: 1, magnet: 1, speed: 1, startMissiles: 0 };
 
   class Game {
     constructor(level, audio, opts = {}) {
       this.L = level;
       this.audio = audio;
       this.opts = opts;
+      this.st = Object.assign({}, NEUTRAL_STATS, opts.stats);   // Upgrades aus dem Incubator
       this.rng = Level.mulberry32(4242);
       this.reset();
     }
 
     reset() {
       this.score = 0;
-      this.lives = 3;
-      this.weapon = 1;               // 1..5  (A..E)
-      this.shield = 0;               // Treffer, die der Schild noch abfängt (0..3)
-      this.missileLvl = 0;           // Raketenrohre 0..3
+      this.lives = this.st.lives;
+      this.weapon = this.st.startWeapon;   // 1..5  (A..E)
+      this.shield = this.st.armor;   // Treffer, die der Schild noch abfängt
+      this.missileLvl = this.st.startMissiles;   // Raketenrohre 0..3
+      this.coins = [];               // fliegende HyperCoins
+      this.runCoins = 0;             // in diesem Lauf eingesammelt
+      this.coinSound = 0;
       this.missiles = [];
       this.missileT = 0;
       this.rapidEnd = -1;            // Songzeit, bis zu der Rapid-Fire läuft
       this.doubleEnd = -1;           // …bzw. doppelte Punkte
       this.volleyN = 0;
       this.sinceDrop = 0;
+      this.rank = 0;                 // Schwierigkeit 0..1, siehe updateRank()
       this.droneMode = 0;            // 0 = vorn, 1 = Flanke
       this.charge = 0;               // HYPER-Ladung 0..1
       this.droneE = 1;               // Drohnen-Energie 0..1
@@ -108,6 +123,17 @@
       this.scroll = 0;               // Welt-x am linken Bildrand – wächst im Takt
       this.hull = [];
       this.lastBeatInt = null;
+    }
+
+    // Dynamischer Rang (wie in klassischen Shmups): gut ein Drittel Songfortschritt, der Rest die
+    // aktuelle Ausrüstung. Wer aufrüstet, bekommt zähere und aggressivere Gegner; wer stirbt, verliert
+    // Ausrüstung, und das Spiel wird wieder gnädiger. Gleitet sanft, damit es keine Sprünge gibt.
+    updateRank(dt) {
+      const progress = clamp(this.songT / this.L.duration, 0, 1);
+      const gear = 0.55 * (this.weapon - 1) / (MAX_WEAPON - 1) + 0.2 * this.missileLvl / 3 +
+        0.1 * (this.shield > 0 ? 1 : 0) + 0.15 * (this.rapidOn ? 1 : 0);
+      const target = clamp(0.35 * progress + 0.75 * gear, 0, 1);
+      this.rank += (target - this.rank) * Math.min(1, dt * 0.5);
     }
 
     // Rumpf-Module, die gerade im Bild sind (sx = Bildschirm-x)
@@ -152,6 +178,7 @@
       this.time += dt;
       this.scroll = this.L.scrollAt(this.beat);
       this.hull = this.visibleHull();
+      this.updateRank(dt);
 
       // Drops: acht Beats lang blitzt und bebt es auf jedem Schlag
       const bi = Math.floor(this.beat);
@@ -185,6 +212,7 @@
       this.stepMissiles(dt);
       this.stepBullets(dt);
       this.stepItems(dt);
+      this.stepCoins(dt);
       this.stepFx(dt);
 
       if (this.beat - this.lastKillBeat > 4) this.chain = 0;
@@ -197,7 +225,11 @@
 
     addEnemy(kind, b0, path, extra = {}) {
       const k = KINDS[kind];
-      const e = Object.assign({ kind, k, hp: k.hp, maxHp: k.hp, b0, path, x: W + 400, y: -400,
+      // zäher mit steigendem Rang (der Boss etwas weniger, sonst zieht sich der Kampf);
+      // Kanonenfutter nur leicht, es soll Futter bleiben
+      const hp = k.hp * (1 + (k.fodder ? 0.8 : kind === 'boss' ? 0.8 : 1.5) * this.rank);
+      if (extra.group) extra.group.left = (extra.group.left || 0) + 1;
+      const e = Object.assign({ kind, k, hp, maxHp: hp, b0, path, x: W + 400, y: -400,
         active: false, dead: false, flash: 0, lastShotB: -99, nextShotT: -1, rot: 0, gone: false }, extra);
       this.enemies.push(e);
       this.spawned++;
@@ -206,58 +238,142 @@
 
     spawnWave(w) {
       const r = Level.mulberry32(w.seed), map = this.L.map;
-      const hard = clamp(this.songT / this.L.duration, 0, 1);
+      // Flugband: im Korridor zwischen Decke und Boden, sonst fast die ganze Höhe
+      const mid = 470, half = w.corr ? 200 : 320;
+      w.left = 0;                     // Gruppenzähler (die Welle lebt im Level und wird wiederverwendet)
       switch (w.type) {
-        case 'line': {
-          const n = 6 + (w.loud > 0.5 ? 2 : 0), step = w.loud > 0.55 ? 0.5 : 1;
-          const y0 = 200 + r() * 500, amp = 80 + r() * 90, sp = 190 + 40 * hard;
+        // ---------- Formationen: Kanonenfutter in klaren Figuren. Alle Mitglieder gehören zu einer
+        // Gruppe (komplett abgeschossen = Chance auf eine Kapsel), mit steigendem Rang werden es mehr.
+        case 'snake': {
+          // Schlange: Kette auf einer Sinusbahn, eine Achtel Abstand
+          const n = 8 + Math.round(this.rank * 4), amp = Math.min(150, half - 30);
+          const y0 = mid + (r() - 0.5) * 2 * (half - amp - 20);
           for (let i = 0; i < n; i++) {
-            this.addEnemy('blue', w.b + i * step, (e, u) => {
-              e.x = W + 60 - u * sp;
-              e.y = y0 + amp * Math.sin(u * Math.PI / 2);
+            this.addEnemy('blue', w.b + i * 0.5, (e, u) => {
+              e.x = W + 60 - u * 220;
+              e.y = y0 + amp * Math.sin(u * Math.PI / 4);
             }, { group: w });
           }
-          w.left = n;
           break;
         }
         case 'swarm': {
-          for (const [y0, ph] of [[250, 0], [710, Math.PI]]) {
-            for (let i = 0; i < 8; i++) {
+          // Drop: zwei gegenläufige Schlangen
+          const amp = Math.min(110, half / 2);
+          for (const [y0, ph] of [[mid - half / 2, 0], [mid + half / 2, Math.PI]]) {
+            for (let i = 0; i < 10; i++) {
               this.addEnemy('blue', w.b + i * 0.5, (e, u) => {
-                e.x = W + 60 - u * 230;
-                e.y = y0 + 110 * Math.sin(u * Math.PI / 2 + ph);
+                e.x = W + 60 - u * 240;
+                e.y = y0 + amp * Math.sin(u * Math.PI / 2 + ph);
               }, { group: w });
             }
-          }
-          w.left = 16;
-          for (const y of [380, 580]) {
-            this.addEnemy('orange', w.b + 4, (e, u) => {
-              e.x = W + 120 - (W + 120 - 1350) * easeOut(u / 2) - (u > 12 ? (u - 12) ** 2 * 50 : 0);
-              e.y = y + 90 * Math.sin(barStep(u) * Math.PI / 2);
-            });
           }
           break;
         }
         case 'vee': {
-          // in lauten Passagen (neue Welle jeden Takt) kürzer halten, damit sich Formationen nicht stapeln
-          const n = 5, cy = 300 + r() * 360, hold = w.loud > 0.5 ? 8 : 16;
+          // Starre Keilformation, schwenkt auf jeder Eins
+          const n = 7 + (this.rank > 0.5 ? 2 : 0), arms = Math.ceil((n - 1) / 2);
+          const sway = w.corr ? 25 : 70, dy = w.corr ? 45 : 55;
+          const y0 = mid + (r() - 0.5) * Math.max(0, 2 * (half - arms * dy - sway));
           for (let i = 0; i < n; i++) {
-            const tx = 1180 + Math.abs(i - 2) * 120, ty = cy + (i - 2) * 125;
-            this.addEnemy(i === 2 ? 'orange' : (r() < 0.5 ? 'orange' : 'blue'), w.b + Math.abs(i - 2) * 0.25, (e, u) => {
-              e.x = tx + (W + 150 - tx) * (1 - easeOut(u / 2)) - (u > hold ? (u - hold) ** 2 * 45 : 0);
-              e.y = clamp(ty + 90 * Math.sin(barStep(u) * Math.PI / 2), 80, 880);
-            });
+            const arm = i === 0 ? 0 : Math.ceil(i / 2) * (i % 2 ? 1 : -1);
+            this.addEnemy('blue', w.b, (e, u) => {
+              e.x = W + 100 - u * 190 + Math.abs(arm) * 75;
+              e.y = y0 + sway * Math.sin(barStep(u) * Math.PI / 2) + arm * dy;
+            }, { group: w });
           }
           break;
         }
-        case 'fighters': {
-          const n = 4 + Math.floor(r() * 3);
+        case 'ring': {
+          // Ring, der sich auf jedem Beat eine Stufe weiterdreht
+          const n = 8 + Math.round(this.rank * 4), R = Math.min(125, half - 40);
+          const cy = mid + (r() - 0.5) * Math.max(0, 2 * (half - R - 50));
           for (let i = 0; i < n; i++) {
-            const top = i % 2 === 0, y0 = top ? 130 : 850, dy = (top ? 1 : -1) * (250 + r() * 150);
-            this.addEnemy('fighter', w.b + i, (e, u) => {
-              e.x = W + 80 - u * (300 + 40 * hard);
-              e.y = y0 + dy * smooth((u - 1) / 3);
+            this.addEnemy('blue', w.b, (e, u) => {
+              const step = Math.floor(u) + easeOut((u % 1) / 0.4);
+              const a = i * Math.PI * 2 / n + step * Math.PI / 8;
+              e.x = W + 200 - u * 150 + Math.cos(a) * R;
+              e.y = cy + Math.sin(a) * R;
+            }, { group: w });
+          }
+          break;
+        }
+        case 'pincer': {
+          // Zange: je eine Reihe von oben und unten, die zur Mitte zusammenlaufen
+          const n = 5 + Math.round(this.rank * 2);
+          for (const top of [true, false]) {
+            for (let i = 0; i < n; i++) {
+              this.addEnemy('blue', w.b + i * 0.5, (e, u) => {
+                e.x = W + 60 - u * 260;
+                const edge = top ? mid - half + 10 : mid + half - 10, to = top ? mid - 45 : mid + 45;
+                e.y = edge + (to - edge) * smooth(u / 3);
+              }, { group: w });
+            }
+          }
+          break;
+        }
+        case 'wall': {
+          // Senkrechte Säule, die auf jedem Beat gemeinsam hüpft
+          const n = 5 + Math.round(this.rank * 2), gap = Math.min(110, (2 * half - 120) / (n - 1));
+          for (let i = 0; i < n; i++) {
+            const base = mid + (i - (n - 1) / 2) * gap;
+            this.addEnemy('blue', w.b, (e, u) => {
+              e.x = W + 80 - u * 165;
+              e.y = base + 50 * Math.cos(Math.PI * (Math.floor(u) + smooth((u % 1) / 0.3)));
+            }, { group: w });
+          }
+          break;
+        }
+        case 'loop': {
+          // Kette, die in der Bildmitte einen Überschlag fliegt
+          const n = 8 + Math.round(this.rank * 3), R = Math.min(160, half - 30), dir = r() < 0.5 ? 1 : -1;
+          const y0 = dir > 0 ? mid + R : mid - R, cx = 1150;
+          for (let i = 0; i < n; i++) {
+            this.addEnemy('blue', w.b + i * 0.45, (e, u) => {
+              if (u < 2) { e.x = W + 60 + (cx - W - 60) * (u / 2); e.y = y0; }
+              else if (u < 6) {
+                const a = (u - 2) / 4 * Math.PI * 2;
+                e.x = cx - R * Math.sin(a);
+                e.y = y0 - dir * R * (1 - Math.cos(a));
+              } else { e.x = cx - (u - 6) * 300; e.y = y0; }
+            }, { group: w });
+          }
+          break;
+        }
+        case 'diag': {
+          // Reihe, die schräg durchs Bild zieht
+          const n = 8 + Math.round(this.rank * 3), down = r() < 0.5;
+          const y0 = down ? mid - half + 20 : mid + half - 20, vy = (down ? 1 : -1) * (2 * half - 40) / 8;
+          for (let i = 0; i < n; i++) {
+            this.addEnemy('blue', w.b + i * 0.4, (e, u) => {
+              e.x = W + 60 - u * 250;
+              e.y = y0 + clamp(u, 0, 8) * vy;
+            }, { group: w });
+          }
+          break;
+        }
+        case 'squad': {
+          // Jäger-Keil im Sturzflug
+          const top = r() < 0.5, n = 5 + (this.rank > 0.5 ? 2 : 0);
+          const from = top ? mid - half + 20 : mid + half - 20, to = mid + (top ? 1 : -1) * half * 0.4;
+          for (let i = 0; i < n; i++) {
+            const arm = i === 0 ? 0 : Math.ceil(i / 2) * (i % 2 ? 1 : -1);
+            this.addEnemy('fighter', w.b, (e, u) => {
+              e.x = W + 100 - u * 300 + Math.abs(arm) * 60;
+              e.y = from + (to - from) * smooth((u - 1) / 3) + arm * 42;
               e.rot = -(top ? 1 : -1) * 0.35 * Math.sin(Math.PI * clamp((u - 1) / 3, 0, 1));
+            }, { group: w });
+          }
+          break;
+        }
+        // ---------- Schwere Gegner
+        case 'orange': {
+          // Kampfdrohnen: fliegen ein, halten drei Takte und feuern, ziehen dann ab
+          const n = 2 + (this.rank > 0.6 ? 1 : 0);
+          for (let i = 0; i < n; i++) {
+            const tx = 1380 + (i % 2) * 130, ty = mid + (i - (n - 1) / 2) * Math.min(220, half * 0.8);
+            this.addEnemy('orange', w.b + i * 0.5, (e, u) => {
+              e.x = tx + (W + 150 - tx) * (1 - easeOut(u / 2)) - (u > 12 ? (u - 12) ** 2 * 45 : 0);
+              e.y = ty + 60 * Math.sin(barStep(u) * Math.PI / 2);
             });
           }
           break;
@@ -337,7 +453,7 @@
             const dy = amp * Math.PI / 4 * Math.cos(u * Math.PI / 4);
             e.rot = Math.atan2(dy, sp) * -1;
           };
-          const g = { left: segs + 1 };
+          const g = {};
           for (let i = segs; i >= 1; i--) this.addEnemy('wormseg', w.b + i * 0.3, path, { group: g, seg: i });
           this.addEnemy('wormhead', w.b, path, { group: g });
           break;
@@ -408,21 +524,31 @@
 
     planNote(n) {
       const loud = this.L.loudAt(n.t);
-      let count = n.strong ? 3 : 2;
-      if (loud < 0.3) count = n.strong ? 1 : 0;
+      const R = this.rank;
+      let count = (n.strong ? 2 : 1) + Math.round(R * 2);
+      if (loud < 0.3) count = n.strong ? 1 + Math.round(R) : Math.round(R);
       else if (loud < 0.5) count--;
-      const cands = this.enemies.filter(e => e.active && !e.dead && e.k.shoots && e.kind !== 'boss' &&
-        e.x < W - 80 && e.x > 180 && n.b - e.lastShotB >= e.k.cool);
+      // schon beim Einfliegen schießen (nicht erst tief im Bild), Nachladezeit sinkt mit dem Rang
+      const ready = e => e.active && !e.dead && e.k.shoots && e.kind !== 'boss' &&
+        e.x < W - 20 && e.x > 120 && n.b - e.lastShotB >= e.k.cool * (1 - 0.4 * R);
+      // Schwere Gegner feuern zuerst; Kanonenfutter höchstens einer pro Note und erst ab mittlerem Rang
+      const heavy = this.enemies.filter(e => ready(e) && !e.k.fodder);
+      const fodder = R > 0.35 ? this.enemies.filter(e => ready(e) && e.k.fodder) : [];
+      const shooters = [];
+      while (shooters.length < count && heavy.length) shooters.push(heavy.splice(Math.floor(this.rng() * heavy.length), 1)[0]);
+      if (shooters.length < count && fodder.length) shooters.push(fodder[Math.floor(this.rng() * fodder.length)]);
       let any = false;
-      for (let i = 0; i < count && cands.length; i++) {
-        const e = cands.splice(Math.floor(this.rng() * cands.length), 1)[0];
+      for (const e of shooters) {
         e.lastShotB = n.b;
         e.nextShotT = n.t;
+        // Muster werden mit dem Rang dichter
         let pattern = 'aim';
-        if (e.kind === 'turret') pattern = 'needle';
+        if (e.kind === 'turret') pattern = R > 0.6 ? 'needle3' : 'needle';
         else if (e.kind === 'carrier') pattern = n.strong ? 'spread5' : 'twinC';
-        else if (e.kind === 'splitter') pattern = n.strong ? 'cross' : 'aim';
-        else if ((e.kind === 'orange' || e.kind === 'wormhead') && n.strong) pattern = 'spread3';
+        else if (e.kind === 'splitter') pattern = n.strong ? (R > 0.6 ? 'cross8' : 'cross') : 'aim';
+        else if (e.kind === 'orange' || e.kind === 'wormhead') pattern = n.strong ? (R > 0.6 ? 'spread5' : 'spread3') : (R > 0.4 ? 'spread3' : 'aim');
+        else if (!e.k.fodder && n.strong && R > 0.45) pattern = 'spread3';
+        else if (!e.k.fodder && R > 0.75) pattern = 'aim2';
         this.planned.push({ t: n.t, e, pattern });
         any = true;
       }
@@ -436,7 +562,7 @@
     }
 
     bulletSpeed() {
-      return 400 + 140 * this.L.loudAt(this.songT) + 120 * clamp(this.songT / this.L.duration, 0, 1);
+      return 420 + 140 * this.L.loudAt(this.songT) + 260 * this.rank;
     }
 
     aim(x, y) {
@@ -456,7 +582,16 @@
       switch (pattern) {
         case 'aim': this.shoot(mx, my, a, sp); break;
         case 'needle': this.shoot(mx, my, a, sp * 1.5, 'needle'); this.shoot(mx, my, a, sp * 1.25, 'needle'); break;
+        case 'needle3': for (const f of [1.5, 1.3, 1.1]) this.shoot(mx, my, a, sp * f, 'needle'); break;
+        case 'aim2': this.shoot(mx, my, a - 0.07, sp); this.shoot(mx, my, a + 0.07, sp); break;
         case 'cross': for (let k = 0; k < 4; k++) this.shoot(e.x, e.y, this.beat * 0.5 + k * Math.PI / 2, sp * 0.8); break;
+        case 'cross8': for (let k = 0; k < 8; k++) this.shoot(e.x, e.y, this.beat * 0.5 + k * Math.PI / 4, sp * 0.8); break;
+        case 'revenge': {
+          // Racheschuss aus dem Wrack, auf der Achtel nach dem Abschuss
+          const n = this.rank > 0.8 ? 3 : 1;
+          for (let k = 0; k < n; k++) this.shoot(e.x, e.y, this.aim(e.x, e.y) + (k - (n - 1) / 2) * 0.22, sp * 0.8);
+          break;
+        }
         case 'twinC':
           for (const dy of [-55, 55]) this.shoot(e.x - 170, e.y + dy, this.aim(e.x - 170, e.y + dy), sp);
           break;
@@ -570,10 +705,10 @@
     // Kapsel fallen lassen – der Typ richtet sich danach, was dem Spieler gerade fehlt
     dropItem(x, y) {
       const opts = [
-        ['W', this.weapon < MAX_WEAPON ? 4 : 0.8],
-        ['S', this.shield === 0 ? 3 : 0.8],
+        ['W', this.weapon < MAX_WEAPON ? 4.5 - this.weapon * 0.7 : 0.6],   // höhere Stufen werden seltener
+        ['S', this.shield === 0 ? 2.5 : 0.6],
         ['E', this.droneE < 0.5 || this.charge < 0.5 ? 2.5 : 1],
-        ['M', this.missileLvl < 3 ? 2.5 : 0.5],
+        ['M', this.missileLvl < 3 ? 1.8 - 0.5 * this.missileLvl : 0.3],
         ['R', this.rapidOn ? 0.3 : 1.5],
         ['X', this.doubleOn ? 0.3 : 1],
         ['L', this.lives < 3 ? 0.4 : 0.15],
@@ -596,8 +731,13 @@
       this.lastKillBeat = this.beat;
       const pts = e.k.score * this.mult * (sync ? 2 : 1) * (this.doubleOn ? 2 : 1);
       this.score += pts;
-      this.charge = Math.min(1, this.charge + (e.kind === 'boss' ? 1 : 0.035 * big * (sync ? 2 : 1)));
+      this.charge = Math.min(1, this.charge + (e.kind === 'boss' ? 1 : 0.02 * big * (sync ? 2 : 1) * this.st.hyperGain));
       this.popups.push({ x: e.x, y: e.y - 30, text: (sync ? 'SYNC ' : '') + pts, t: 0, sync });
+
+      // HyperCoins: sichere Anzahl plus Chance auf eine weitere, SYNC gibt eine extra
+      const c = COINS[e.kind] || 0;
+      const n = Math.floor(c) + (this.rng() < c % 1 ? 1 : 0) + (sync && c > 0 ? 1 : 0);
+      if (n) this.dropCoins(e.x, e.y, n);
 
       // Explosion: Bild sofort, Klang auf der nächsten Sechzehntel
       const q = Math.ceil(this.beat * 4 + 0.05) / 4;
@@ -631,11 +771,24 @@
       }
 
       // Beute: Orange lassen manchmal eine Kapsel fallen, eine komplett abgeschossene Kette immer
-      let drop = (e.k.drop && this.rng() < e.k.drop) || this.rng() < 0.04;
-      if (e.group) { e.group.left--; if (e.group.left === 0) drop = true; }
-      // spätestens alle 15 Abschüsse eine Kapsel
+      let drop = (e.k.drop && this.rng() < e.k.drop) || this.rng() < 0.015;
+      if (e.group) {
+        e.group.left--;
+        // komplett abgeschossene Formation: Münzregen und Chance auf eine Kapsel
+        if (e.group.left === 0) { this.dropCoins(e.x, e.y, 5); if (this.rng() < 0.35) drop = true; }
+      }
+      // spätestens alle 35 Abschüsse eine Kapsel
       if (drop) this.sinceDrop = 0;
-      else if (++this.sinceDrop >= 15) { drop = true; this.sinceDrop = 0; }
+      else if (++this.sinceDrop >= 35) { drop = true; this.sinceDrop = 0; }
+
+      // Racheschuss ab mittlerem Rang: das Wrack feuert auf der nächsten Achtel zurück (im Takt),
+      // aber nie, wenn der Spieler direkt davor steht – das wäre unfair
+      const noRevenge = e.k.fodder || e.kind === 'boss' || e.kind === 'shard' || e.kind === 'wormseg' || e.kind === 'mine' || e.kind === 'rock' || e.kind === 'dart';
+      if (!noRevenge && this.rank > 0.45 && this.rng() < this.rank && Math.hypot(e.x - this.player.x, e.y - this.player.y) > 260) {
+        const t8 = map.timeOf(Math.ceil(this.beat * 2 + 0.05) / 2);
+        this.planned.push({ t: t8, e: { x: e.x, y: e.y, k: e.k, kind: e.kind, dead: false }, pattern: 'revenge' });
+        this.audio.enemyShot(t8, false);
+      }
       if (drop) this.dropItem(e.x, e.y);
     }
 
@@ -674,6 +827,7 @@
         if (p.respawn <= 0 && !this.over) {
           p.alive = true;
           p.x = -80; p.y = 480; p.inv = 2.5; p.entering = 0.6;
+          this.shield = Math.max(this.shield, this.st.armor);   // Panzerung aus dem Incubator
           this.audio.muffle(false);
         }
         return;
@@ -682,7 +836,7 @@
         p.entering -= dt;
         p.x += (260 - p.x) * Math.min(1, dt * 8);
       } else {
-        const sp = input.focus ? 330 : 640;
+        const sp = (input.focus ? 330 : 640) * this.st.speed;
         let ix = input.x, iy = input.y;
         const len = Math.hypot(ix, iy);
         if (len > 1) { ix /= len; iy /= len; }
@@ -699,9 +853,9 @@
       const tx = this.droneMode === 0 ? p.x + 125 : p.x - 20, ty = this.droneMode === 0 ? p.y : p.y + (Math.sin(this.time * 3) * 95);
       d.x += (tx - d.x) * Math.min(1, dt * 12);
       d.y += (ty - d.y) * Math.min(1, dt * 12);
-      if (this.droneOnline) this.droneE = Math.min(1, this.droneE + dt * 0.04);
+      if (this.droneOnline) this.droneE = Math.min(1, this.droneE + dt * 0.04 * this.st.droneRegen);
       else {
-        this.droneE = Math.min(1, this.droneE + dt * 0.2);
+        this.droneE = Math.min(1, this.droneE + dt * 0.2 * this.st.droneRegen);
         if (this.droneE >= 1) this.droneOnline = true;
       }
       if (input.drone) { this.droneMode = 1 - this.droneMode; this.audio.droneToggle(); }
@@ -732,7 +886,7 @@
       p.recoil = Math.max(0, (p.recoil || 0) - dt * 12);
       this.missileT -= dt;
       if (firing && this.missileLvl > 0 && this.missileT <= 0) {
-        this.missileT = this.rapidOn ? 0.38 : 0.55;
+        this.missileT = this.rapidOn ? 0.8 : 1.1;
         for (let k = 0; k < this.missileLvl; k++) {
           const side = k % 2 ? 1 : -1;
           this.missiles.push({ x: p.x - 10, y: p.y + side * (18 + 10 * k), vx: 80, vy: side * (240 + 60 * k), t: 0, target: null, smoke: 0 });
@@ -741,24 +895,27 @@
       }
     }
 
-    // Waffenstufen:  A Zwilling · B + Fächer · C + Plasma-Speer (durchschlägt 3 Gegner)
-    //                D + breiter Fächer · E alles als Plasma, noch breiter
+    // Waffenstufen. Hauptstrahl und Speer reichen übers ganze Bild, die Fächer verglühen nach kurzer
+    // Strecke: mehr Stufen = mehr Abdeckung in der Nähe, nicht Vernichtung am Horizont.
+    // Schaden pro Salve: A 2,6 · B 3,6 · C ~4,6 · D ~5,4 · E ~6,6 (E ≈ 2,5 × A)
+    //   A Zwilling · B + enger Fächer · C + Plasma-Speer (durchschlägt 1 Gegner)
+    //   D + weiter Fächer · E Hauptstrahl als Plasma, dritter Fächer
     volley() {
       const p = this.player, d = this.drone, w = this.weapon;
-      const plasma = w >= 5 ? 'plasma' : 'bolt';
-      const shot = (x, y, deg, dmg, kind = plasma, pierce = 0) => {
+      const shot = (x, y, deg, dmg, kind = 'bolt', range = Infinity, pierce = 0) => {
         const a = deg * Math.PI / 180, sp = kind === 'lance' ? 2600 : SHOT_SPEED;
-        this.shots.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg, kind, pierce, hit: pierce ? new Set() : null });
+        this.shots.push({ x, y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, dmg: dmg * this.st.damage, kind, range, pierce, hit: pierce ? new Set() : null });
       };
-      shot(p.x + 60, p.y - 10, 0, 1.3);
-      shot(p.x + 60, p.y + 10, 0, 1.3);
-      if (w >= 2) { shot(p.x + 50, p.y - 4, -6, 1.1); shot(p.x + 50, p.y + 4, 6, 1.1); }
-      if (w >= 3 && this.volleyN % 2 === 0) shot(p.x + 80, p.y, 0, 3, 'lance', 3);
-      if (w >= 4) { shot(p.x + 40, p.y - 4, -14, 1); shot(p.x + 40, p.y + 4, 14, 1); }
-      if (w >= 5) { shot(p.x + 30, p.y - 6, -24, 1); shot(p.x + 30, p.y + 6, 24, 1); }
+      const main = w >= 5 ? 'plasma' : 'bolt', mainDmg = w >= 5 ? 1.6 : 1.3, fan = w >= 5 ? 760 : 640;
+      shot(p.x + 60, p.y - 10, 0, mainDmg, main);
+      shot(p.x + 60, p.y + 10, 0, mainDmg, main);
+      if (w >= 2) { shot(p.x + 50, p.y - 4, -6, 0.5, 'bolt', fan); shot(p.x + 50, p.y + 4, 6, 0.5, 'bolt', fan); }
+      if (w >= 3 && this.volleyN % 2 === 0) shot(p.x + 80, p.y, 0, 2, 'lance', Infinity, 1);
+      if (w >= 4) { shot(p.x + 40, p.y - 4, -13, 0.4, 'bolt', fan); shot(p.x + 40, p.y + 4, 13, 0.4, 'bolt', fan); }
+      if (w >= 5) { shot(p.x + 30, p.y - 6, -20, 0.35, 'bolt', fan - 120); shot(p.x + 30, p.y + 6, 20, 0.35, 'bolt', fan - 120); }
       if (this.droneOnline) {
-        if (this.droneMode === 0) shot(d.x + 30, d.y, 0, 1.3);
-        else { shot(d.x + 20, d.y, -30, 1); shot(d.x + 20, d.y, 30, 1); }
+        if (this.droneMode === 0) shot(d.x + 30, d.y, 0, 0.8);
+        else { shot(d.x + 20, d.y, -30, 0.5, 'bolt', 700); shot(d.x + 20, d.y, 30, 0.5, 'bolt', 700); }
       }
       this.volleyN++;
       this.muzzle = 0.06;
@@ -768,9 +925,11 @@
 
     // Zielsuchraketen: erst seitlich ausstoßen, dann auf das nächste Ziel einschwenken
     pickTarget(m) {
+      // nur Ziele in mittlerer Reichweite vor dem Schiff (kein Abräumen am Horizont)
       let best = null, bd = Infinity;
+      const reach = this.player.x + 950;
       for (const e of this.enemies) {
-        if (!e.active || e.dead || e.x > W - 30 || e.x < 0) continue;
+        if (!e.active || e.dead || e.x > Math.min(ENTRY_X - 60, reach) || e.x < 0) continue;
         const d = Math.hypot(e.x - m.x, e.y - m.y) + (e.targeted ? 400 : 0);
         if (d < bd) { bd = d; best = e; }
       }
@@ -797,11 +956,11 @@
         if (m.smoke <= 0) { m.smoke = 0.025; this.addFx({ type: 'muzzle', x: m.x, y: m.y, life: 0.25, size: 14, color: '#ff9a3c' }); }
         if (m.t > 3 || m.x > W + 60 || m.x < -60 || m.y < -60 || m.y > H + 60 || (this.hull.length && this.inHull(m.x, m.y, 0))) { m.dead = true; continue; }
         for (const e of this.enemies) {
-          if (!e.active || e.dead || !this.inside(e, m.x, m.y, 8)) continue;
+          if (!e.active || e.dead || e.x > ENTRY_X || !this.inside(e, m.x, m.y, 8)) continue;
           m.dead = true;
-          this.hurt(e, 4, m.x, m.y, true);
+          this.hurt(e, 2.5 * this.st.damage, m.x, m.y, true);
           // Flächenschaden
-          for (const o of this.enemies) if (o !== e && o.active && !o.dead && Math.hypot(o.x - m.x, o.y - m.y) < 90) this.hurt(o, 1.5);
+          for (const o of this.enemies) if (o !== e && o.active && !o.dead && Math.hypot(o.x - m.x, o.y - m.y) < 80) this.hurt(o, this.st.damage);
           this.addFx({ type: 'boom', x: m.x, y: m.y, life: 0.35, size: 55, rot: Math.random() * 6 });
           this.addFx({ type: 'ring', x: m.x, y: m.y, life: 0.25, size: 80, color: '255,180,110' });
           break;
@@ -833,8 +992,9 @@
       this.shake = 22;
       this.audio.playerDie();
       this.audio.muffle(true);
-      this.weapon = Math.max(1, this.weapon - 1);
-      this.missileLvl = Math.max(0, this.missileLvl - 1);
+      this.weapon = Math.max(this.st.startWeapon, this.weapon - 2);   // nie unter die Startwaffe
+      this.missileLvl = Math.max(this.st.startMissiles, this.missileLvl - 1);
+      this.shield = 0;
       this.rapidEnd = this.doubleEnd = -1;
       this.missiles.length = 0;
       this.chain = 0;
@@ -848,6 +1008,7 @@
       for (const s of this.shots) {
         s.x += s.vx * dt;
         s.y += s.vy * dt;
+        if (s.range !== Infinity) { s.range -= Math.hypot(s.vx, s.vy) * dt; if (s.range <= 0) { s.dead = true; continue; } }
         if (s.x > W + 40 || s.y < -40 || s.y > H + 40) { s.dead = true; continue; }
         if (this.hull.length && this.inHull(s.x, s.y, 0)) {
           s.dead = true;
@@ -856,7 +1017,7 @@
         }
         const heavy = s.kind !== 'bolt';
         for (const e of this.enemies) {
-          if (!e.active || e.dead || e.x > W + 40) continue;
+          if (!e.active || e.dead || e.x > ENTRY_X) continue;       // Einflugschutz
           if (s.hit && s.hit.has(e)) continue;
           if (this.inside(e, s.x, s.y, heavy ? 12 : 5)) {
             this.hurt(e, s.dmg * (s.kind === 'plasma' ? 1.4 : 1), s.x, s.y, heavy);
@@ -880,7 +1041,7 @@
         if (this.hull.length && b.t > 0.1 && this.inHull(b.x, b.y, 0)) { b.dead = true; continue; }
         if (this.droneOnline && p.alive && Math.hypot(b.x - d.x, b.y - d.y) < 30 + b.r) {
           b.dead = true;
-          this.droneE -= 0.2;
+          this.droneE -= 0.25 * this.st.droneDrain;
           this.audio.droneBlock();
           this.addFx({ type: 'muzzle', x: b.x, y: b.y, life: 0.15, size: 40, color: '#6fd0ff' });
           if (this.droneE <= 0) { this.droneE = 0; this.droneOnline = false; this.explode(d.x, d.y, 0.6); this.audio.droneLost(); }
@@ -899,9 +1060,10 @@
       for (const it of this.items) {
         it.t += dt;
         const dx = p.x - it.x, dy = p.y - it.y, dist = Math.hypot(dx, dy);
-        if (p.alive && dist < 220 && dist > 1) {
+        const mr = 150 * this.st.magnet;
+        if (p.alive && dist < mr && dist > 1) {
           // Magnet: in der Nähe fliegt die Kapsel zum Schiff
-          const pull = 900 * (1 - dist / 220) * dt;
+          const pull = 800 * (1 - dist / mr) * dt;
           it.x += dx / dist * pull; it.y += dy / dist * pull;
         } else {
           it.x -= 110 * dt;
@@ -916,23 +1078,55 @@
       this.items = this.items.filter(i => !i.dead);
     }
 
+    // HyperCoins: platzen aus dem Wrack, treiben dann mit der Welt nach links; im Magnetradius
+    // fliegen sie zum Schiff (Radius mit dem Magnet-Upgrade größer)
+    dropCoins(x, y, n) {
+      for (let i = 0; i < n; i++) {
+        const a = Math.random() * Math.PI * 2, s = 80 + Math.random() * 220;
+        this.coins.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, t: Math.random() * 6, age: 0 });
+      }
+    }
+
+    stepCoins(dt) {
+      const p = this.player, drift = this.L.PX_PER_BEAT * this.L.bpm / 60, mr = 260 * this.st.magnet;
+      for (const c of this.coins) {
+        c.t += dt; c.age += dt;
+        const dx = p.x - c.x, dy = p.y - c.y, d = Math.hypot(dx, dy);
+        if (p.alive && d < mr && c.age > 0.25 && d > 1) {
+          const sp = 500 + 1400 * (1 - d / mr);
+          c.x += dx / d * sp * dt; c.y += dy / d * sp * dt;
+        } else {
+          c.vx *= Math.pow(0.05, dt); c.vy *= Math.pow(0.05, dt);
+          c.x += (c.vx - drift * 0.5) * dt; c.y += c.vy * dt;
+        }
+        if (c.x < -40) c.dead = true;
+        else if (p.alive && d < 46) {
+          c.dead = true;
+          this.runCoins++;
+          // Klang gedrosselt, sonst rattert ein Münzregen
+          if (this.time - this.coinSound > 0.045) { this.coinSound = this.time; this.audio.coin(this.runCoins); }
+        }
+      }
+      this.coins = this.coins.filter(c => !c.dead);
+    }
+
     collect(it) {
-      const map = this.L.map, eightBars = () => map.timeOf(this.beat + 32);
+      const map = this.L.map, bars = n => map.timeOf(this.beat + 4 * n);
       let text = POWERS[it.type].name, bonus = false;
       switch (it.type) {
         case 'W':
           if (this.weapon < MAX_WEAPON) { this.weapon++; text = 'WEAPON ' + 'ABCDE'[this.weapon - 1]; } else bonus = true;
           break;
-        case 'S': this.shield = 3; break;
+        case 'S': this.shield = 2; break;
         case 'E':
           this.droneE = 1; this.droneOnline = true;
-          this.charge = Math.min(1, this.charge + 0.4);
+          this.charge = Math.min(1, this.charge + 0.4 * this.st.hyperGain);
           break;
         case 'M':
           if (this.missileLvl < 3) { this.missileLvl++; text = 'MISSILES ' + 'I'.repeat(this.missileLvl); } else bonus = true;
           break;
-        case 'R': this.rapidEnd = eightBars(); break;
-        case 'X': this.doubleEnd = eightBars(); break;
+        case 'R': this.rapidEnd = bars(4); break;
+        case 'X': this.doubleEnd = bars(8); break;
         case 'L': this.lives = Math.min(9, this.lives + 1); break;
       }
       if (bonus) { this.score += 5000 * this.mult; text = '5000'; }

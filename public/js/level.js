@@ -76,37 +76,43 @@
       return 0;
     };
 
-    // ---------- Wellen: in lauten Passagen jeden Takt, sonst alle zwei Takte
+    // ---------- Wellen auf zwei getrennten Spuren, damit kein Durcheinander entsteht:
+    //   Formationen – Kanonenfutter in klaren Figuren, eine zur Zeit, alle 2 Takte auf der Eins
+    //   Schwere     – einzelne gefährliche Gegner, höchstens alle 4 Takte, versetzt dazwischen
     const waves = [];
-    let lastGate = -1e9, lastRocks = -1e9, lastCarrier = -1e9, lastWorm = -1e9, n = 0, b = firstBar;
-    while (b < endBeat) {
-      const loud = loudOf(b, 4);
-      const step = loud > 0.5 ? 4 : 8;
-      if (!inBoss(b)) {
-        let type = null;
-        const corr = inCorridor(b);
-        if (nearDrop(b, 4)) type = 'swarm';
-        else if (nearDrop(b, 16)) type = pick(rng, ['darts', 'worm', 'vee']);
-        else if (corr) type = pick(rng, ['turrets', 'turrets', 'darts', 'line', 'mines', 'worm']);
-        else if (loud < 0.22) type = b - lastRocks >= 16 ? 'rocks' : (rng() < 0.5 ? 'mines' : null);
-        else if (loud > 0.6 && b - lastCarrier >= 64 && n > 6) type = 'carrier';
-        else if (loud > 0.6 && b - lastGate >= 48 && n > 4) type = 'gate';
-        else if (loud < 0.45) type = pick(rng, ['line', 'fighters', 'darts', 'splitter', 'mines', 'rocks']);
-        else type = pick(rng, ['line', 'vee', 'fighters', 'darts', 'worm', 'splitter', 'vee']);
-        if (type === 'worm' && b - lastWorm < 16) type = 'darts';
-        // nie zwei V-Formationen direkt hintereinander
-        if (type === 'vee' && waves.length && waves[waves.length - 1].type === 'vee' && b - waves[waves.length - 1].b < 12) type = 'fighters';
-        if (type === 'rocks' && b - lastRocks < 16) type = 'line';
-        if (type) {
-          if (type === 'gate') lastGate = b;
-          if (type === 'rocks') lastRocks = b;
-          if (type === 'carrier') lastCarrier = b;
-          if (type === 'worm') lastWorm = b;
-          waves.push({ b, type, loud, seed: Math.floor(rng() * 1e9), corr });
-          n++;
-        }
+    const seed = () => Math.floor(rng() * 1e9);
+    const FORM_QUIET = ['snake', 'diag', 'wall', 'vee'];
+    const FORM_LOUD = ['snake', 'vee', 'ring', 'pincer', 'wall', 'loop', 'squad', 'diag'];
+    let lastForm = null;
+    for (let b = firstBar; b < endBeat; b += 8) {
+      if (inBoss(b)) continue;
+      const loud = loudOf(b, 8);
+      let type;
+      if (nearDrop(b, 4)) type = 'swarm';
+      else {
+        const pool = (loud < 0.4 ? FORM_QUIET : FORM_LOUD).filter(t => t !== lastForm);
+        type = pick(rng, pool);
       }
-      b += step;
+      lastForm = type;
+      waves.push({ b, type, loud, seed: seed(), corr: inCorridor(b), form: true });
+    }
+    let lastGate = -1e9, lastCarrier = -1e9, lastWorm = -1e9, lastRocks = -1e9, n = 0;
+    for (let b = firstBar + 4; b < endBeat; b += 16) {
+      if (inBoss(b) || inBoss(b + 8)) continue;
+      const loud = loudOf(b, 16), corr = inCorridor(b);
+      let type = null;
+      if (corr) type = rng() < 0.7 ? 'turrets' : 'mines';
+      else if (loud < 0.22) type = b - lastRocks >= 32 ? 'rocks' : 'mines';
+      else if (loud > 0.6 && b - lastCarrier >= 96 && n > 3) type = 'carrier';
+      else if (loud > 0.55 && b - lastGate >= 80 && n > 2) type = 'gate';
+      else if (loud > 0.45 && b - lastWorm >= 48) type = 'worm';
+      else type = pick(rng, loud < 0.4 ? ['orange', 'splitter', 'mines', 'darts'] : ['orange', 'splitter', 'darts', 'orange']);
+      if (type === 'gate') lastGate = b;
+      if (type === 'carrier') lastCarrier = b;
+      if (type === 'worm') lastWorm = b;
+      if (type === 'rocks') lastRocks = b;
+      waves.push({ b, type, loud, seed: seed(), corr, form: false });
+      n++;
     }
     if (boss) waves.push({ b: boss.b0, type: 'boss', loud: 1, seed: 1 });
     waves.sort((x, y) => x.b - y.b);

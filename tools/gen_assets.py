@@ -58,6 +58,12 @@ ASSETS = {
     "hull": ("a long horizontal strip of a massive space station hull seen exactly from the side, heavy industrial "
              "grey metal plating, pipes, vents, antennas and small blue lights, perfectly flat straight top edge, "
              "wide panoramic module", GREEN, 1536, 512),
+    "coin": ("a single glowing sci-fi energy coin, hexagonal, polished gold rim with a bright cyan glowing crystal "
+             "core and a stylized letter H emblem, front view", GREEN, 1024, 1024),
+    "incubator": ("interior of a futuristic spaceship upgrade bay called the incubator, a circular glowing cyan "
+                  "holographic docking platform in the center of the left half, empty, dark metallic walls with "
+                  "cables, soft blue volumetric light, holographic display panels on the right, cinematic, "
+                  "wide angle", "no text, no frame, no people", 1536, 864),
     "hulltex": ("sci-fi space station hull plating texture, heavy dark grey riveted metal panels, pipes, vents, "
                 "cable ducts and a few small glowing blue lights, flat orthographic front view filling the entire "
                 "frame edge to edge, even lighting", "no text, no frame, no border", 1024, 1024),
