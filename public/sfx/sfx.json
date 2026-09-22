@@ -53,5 +53,25 @@
   "file": "debris.wav",
   "peak": 0.26,
   "len": 1.2
+ },
+ "pickup_shield": {
+  "file": "pickup_shield.mp3",
+  "peak": 0,
+  "len": 0.91
+ },
+ "pickup_energy": {
+  "file": "pickup_energy.mp3",
+  "peak": 0,
+  "len": 0.86
+ },
+ "pickup_missile": {
+  "file": "pickup_missile.mp3",
+  "peak": 0,
+  "len": 0.99
+ },
+ "warning_energy": {
+  "file": "warning_energy.mp3",
+  "peak": 0,
+  "len": 2.22
  }
 }

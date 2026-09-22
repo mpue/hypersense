@@ -9,6 +9,7 @@
   const UPGRADES = [
     { id: 'firepower', name: 'FIREPOWER', desc: '+10 % damage for every shot and missile', max: 5, base: 40 },
     { id: 'weapon', name: 'START WEAPON', desc: 'Start with weapon B / C - and never drop below it', max: 2, base: 120 },
+    { id: 'hull', name: 'REINFORCED HULL', desc: '+25 % hull energy', max: 3, base: 60 },
     { id: 'armor', name: 'ARMOR PLATING', desc: 'Start and respawn with 1 / 2 shield hits', max: 2, base: 80 },
     { id: 'lives', name: 'EXTRA SHIP', desc: '+1 ship per run', max: 2, base: 150 },
     { id: 'drone', name: 'DRONE CORE', desc: 'Drone takes more hits and recharges faster', max: 3, base: 50 },
@@ -51,6 +52,7 @@
       return {
         damage: 1 + 0.1 * L('firepower'),
         startWeapon: 1 + L('weapon'),
+        hullMax: 1 + 0.25 * L('hull'),
         armor: L('armor'),
         lives: 3 + L('lives'),
         droneDrain: 1 - 0.2 * L('drone'),

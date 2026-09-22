@@ -34,6 +34,16 @@ PICKS = {
 }
 
 
+# Eigene Sounds aus sounds/ – werden unverändert übernommen. name: (Datei, Länge in s)
+EXTRA_DIR = Path(__file__).resolve().parent.parent / "sounds"
+EXTRA = {
+    "pickup_shield": ("shiedl_pickup.mp3", 0.91),
+    "pickup_energy": ("energy_pickup.mp3", 0.86),
+    "pickup_missile": ("missile_pickup.mp3", 0.99),
+    "warning_energy": ("warning_energy.mp3", 2.22),
+}
+
+
 def process(path, max_len):
     x, sr = read(path)
     env = np.abs(x)
@@ -57,6 +67,13 @@ def main():
             w.writeframes((x * 32767).astype("<i2").tobytes())
         meta[name] = {"file": f"{name}.wav", "peak": round(peak, 3), "len": round(len(x) / sr, 3)}
         print(f"{name:8} {len(x) / sr:4.2f}s  peak {peak:.2f}s  {sr} Hz  <- {path.name}")
+    for name, (file, length) in EXTRA.items():
+        src = EXTRA_DIR / file
+        if not src.exists():
+            print("missing", file); continue
+        (OUT / f"{name}.mp3").write_bytes(src.read_bytes())
+        meta[name] = {"file": f"{name}.mp3", "peak": 0, "len": length}
+        print(f"{name:15} {length:4.2f}s  <- sounds/{file}")
     (OUT / "sfx.json").write_text(json.dumps(meta, indent=1))
 
 

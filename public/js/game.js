@@ -22,7 +22,7 @@
   const POWERS = {
     W: { name: 'WEAPON UP', color: '#5ad8ff', label: 'W' },
     S: { name: 'SHIELD', color: '#7f95ff', label: 'S' },
-    E: { name: 'ENERGY', color: '#6dff8a', label: 'E' },
+    E: { name: 'ENERGY +40%', color: '#6dff8a', label: 'E' },
     M: { name: 'MISSILES', color: '#ff6a4a', label: 'M' },
     R: { name: 'RAPID FIRE', color: '#ffd24a', label: 'R' },
     X: { name: 'SCORE x2', color: '#d86bff', label: '2x' },
@@ -59,7 +59,10 @@
     blue: 0.3, fighter: 0.3, dart: 1, mine: 1, rock: 2, orange: 3, turret: 3, splitter: 4, shard: 0,
     wormseg: 0.3, wormhead: 8, cannon: 6, carrier: 12, boss: 60,
   };
-  const NEUTRAL_STATS = { damage: 1, startWeapon: 1, armor: 0, lives: 3, droneDrain: 1, droneRegen: 1,
+  // Schaden an der Hülle (1 = volle Energie ohne Upgrade)
+  const HULL_DMG = { orb: 0.34, big: 0.45, needle: 0.25, ram: 0.4, heavyRam: 0.6, wall: 0.4, beam: 0.6 };
+
+  const NEUTRAL_STATS = { damage: 1, startWeapon: 1, hullMax: 1, armor: 0, lives: 3, droneDrain: 1, droneRegen: 1,
     hyperGain: 1, magnet: 1, speed: 1, startMissiles: 0 };
 
   class Game {
@@ -77,6 +80,10 @@
       this.lives = this.st.lives;
       this.weapon = this.st.startWeapon;   // 1..5  (A..E)
       this.shield = this.st.armor;   // Treffer, die der Schild noch abfängt
+      this.energy = this.st.hullMax; // Hüllenenergie, bei 0 ist das Schiff verloren
+      this.energyShow = 0;           // Sekunden, die die kleine Leiste am Schiff noch sichtbar ist
+      this.hurtFlash = 0;
+      this.lowBeep = 0;
       this.missileLvl = this.st.startMissiles;   // Raketenrohre 0..3
       this.coins = [];               // fliegende HyperCoins
       this.runCoins = 0;             // in diesem Lauf eingesammelt
@@ -218,6 +225,14 @@
       if (this.beat - this.lastKillBeat > 4) this.chain = 0;
       this.shake = Math.max(0, this.shake - dt * 30);
       this.flash = Math.max(0, this.flash - dt * 2.5);
+      this.hurtFlash = Math.max(0, this.hurtFlash - dt * 2);
+      this.energyShow = Math.max(0, this.energyShow - dt);
+      // Warnton bei knapper Energie
+      if (this.player.alive && this.energy / this.st.hullMax < 0.26) {
+        this.lowBeep -= dt;
+        // im Abstand der Warnton-Länge wiederholen, damit er sich nicht überlappt
+        if (this.lowBeep <= 0) this.lowBeep = (this.audio.lowEnergy() || 0.9) + 0.25;
+      } else this.lowBeep = 0;
       if (this.banner && songT > this.banner.t1) this.banner = null;
     }
 
@@ -625,7 +640,12 @@
         if (e.x < -250 || e.x > W + 2400 || e.gone) { e.dead = true; e.escaped = true; continue; }
         // Zusammenstoß mit dem Spieler
         const p = this.player;
-        if (p.alive && p.inv <= 0 && !this.hyperOn && this.inside(e, p.x, p.y, 6)) this.killPlayer();
+        if (p.alive && p.inv <= 0 && !this.hyperOn && this.inside(e, p.x, p.y, 6)) {
+          // Rammen: Kanonenfutter geht dabei drauf, schwere Gegner und Wände nicht
+          const big = !e.k.fodder && e.kind !== 'dart' && e.kind !== 'shard';
+          this.damagePlayer(big ? HULL_DMG.heavyRam : HULL_DMG.ram);
+          if (!big) this.killEnemy(e);
+        }
       }
       this.enemies = this.enemies.filter(e => !e.dead);
       if (this.bossRef && this.bossRef.dead) this.bossRef = null;
@@ -675,7 +695,7 @@
         bm.x = bm.e.x - 150;
         if (this.songT >= bm.tFire) {
           if (bm.y === null) { bm.y = bm.e.y; this.shake = Math.max(this.shake, 8); }
-          if (p.alive && p.inv <= 0 && !this.hyperOn && Math.abs(p.y - bm.y) < 26 && p.x < bm.x) this.killPlayer();
+          if (p.alive && p.inv <= 0 && !this.hyperOn && Math.abs(p.y - bm.y) < 26 && p.x < bm.x) this.damagePlayer(HULL_DMG.beam);
         } else bm.yWarn = bm.e.y;
       }
       this.beams = this.beams.filter(b => !b.dead);
@@ -707,7 +727,7 @@
       const opts = [
         ['W', this.weapon < MAX_WEAPON ? 4.5 - this.weapon * 0.7 : 0.6],   // höhere Stufen werden seltener
         ['S', this.shield === 0 ? 2.5 : 0.6],
-        ['E', this.droneE < 0.5 || this.charge < 0.5 ? 2.5 : 1],
+        ['E', this.energy / this.st.hullMax < 0.5 ? 4 : this.droneE < 0.5 || this.charge < 0.5 ? 2 : 0.8],
         ['M', this.missileLvl < 3 ? 1.8 - 0.5 * this.missileLvl : 0.3],
         ['R', this.rapidOn ? 0.3 : 1.5],
         ['X', this.doubleOn ? 0.3 : 1],
@@ -827,6 +847,7 @@
         if (p.respawn <= 0 && !this.over) {
           p.alive = true;
           p.x = -80; p.y = 480; p.inv = 2.5; p.entering = 0.6;
+          this.energy = this.st.hullMax;                         // frisches Schiff, volle Energie
           this.shield = Math.max(this.shield, this.st.armor);   // Panzerung aus dem Incubator
           this.audio.muffle(false);
         }
@@ -846,7 +867,7 @@
         p.y = clamp(p.y + iy * sp * dt + dy, BOUNDS.y0, BOUNDS.y1);
         if (dy) iy = clamp(dy / (sp * Math.max(dt, 1 / 120)), -1, 1);
         p.tilt += (iy - p.tilt) * Math.min(1, dt * 10);
-        if (p.inv <= 0 && !this.hyperOn && this.inHull(p.x, p.y, 14)) { this.killPlayer(); if (!p.alive) return; }
+        if (p.inv <= 0 && !this.hyperOn && this.inHull(p.x, p.y, 14)) { this.damagePlayer(HULL_DMG.wall, true); if (!p.alive) return; }
       }
 
       // Drohne
@@ -969,9 +990,12 @@
       this.missiles = this.missiles.filter(m => !m.dead);
     }
 
-    killPlayer() {
+    // Treffer: erst fängt der Schild ab, dann verliert die Hülle Energie; bei 0 ist das Schiff verloren.
+    // Danach kurz unverwundbar, damit sich Treffer nicht stapeln.
+    damagePlayer(dmg, pushOut = false) {
       const p = this.player;
-      // Schild fängt den Treffer ab
+      if (!p.alive) return;
+      if (pushOut && this.inHull(p.x, p.y, 14)) p.y += p.y < 480 ? 140 : -140;   // aus dem Rumpf schubsen
       if (this.shield > 0) {
         this.shield--;
         p.inv = 1;
@@ -979,11 +1003,26 @@
         this.flash = Math.max(this.flash, 0.2);
         this.addFx({ type: 'ring', x: p.x, y: p.y, life: 0.4, size: 220, color: '127,149,255' });
         this.bullets = this.bullets.filter(b => Math.hypot(b.x - p.x, b.y - p.y) > 220);
-        if (this.inHull(p.x, p.y, 14)) p.y += p.y < 480 ? 140 : -140;   // aus dem Rumpf schubsen
         this.popups.push({ x: p.x, y: p.y - 50, text: this.shield ? 'SHIELD ' + this.shield : 'SHIELD DOWN', t: 0 });
         this.audio.shieldHit();
         return;
       }
+      if (this.opts.god) { p.inv = 0.5; this.shake = 8; this.energyShow = 1; return; }
+      this.energy = Math.max(0, this.energy - dmg);
+      p.inv = 0.7;
+      this.energyShow = 2.5;
+      this.hurtFlash = 0.4;
+      this.shake = Math.max(this.shake, 12);
+      for (let i = 0; i < 8; i++) {
+        const a = Math.random() * Math.PI * 2, s = 150 + Math.random() * 300;
+        this.addFx({ type: 'spark', x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.35, size: 3, color: '#ff8a6a' });
+      }
+      this.audio.playerHit(this.energy / this.st.hullMax);
+      if (this.energy <= 0) this.killPlayer();
+    }
+
+    killPlayer() {
+      const p = this.player;
       if (this.opts.god) { p.inv = 0.5; this.shake = 8; return; }
       p.alive = false;
       p.respawn = 1.6;
@@ -1049,7 +1088,7 @@
         }
         if (p.alive && p.inv <= 0 && !this.hyperOn && Math.hypot(b.x - p.x, b.y - p.y) < PLAYER_R + b.r * 0.7) {
           b.dead = true;
-          this.killPlayer();
+          this.damagePlayer(HULL_DMG[b.kind] || HULL_DMG.orb);
         }
       }
       this.bullets = this.bullets.filter(b => !b.dead);
@@ -1119,6 +1158,8 @@
           break;
         case 'S': this.shield = 2; break;
         case 'E':
+          this.energy = Math.min(this.st.hullMax, this.energy + 0.4);   // heilt die Hülle
+          this.energyShow = 2;
           this.droneE = 1; this.droneOnline = true;
           this.charge = Math.min(1, this.charge + 0.4 * this.st.hyperGain);
           break;

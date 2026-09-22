@@ -336,6 +336,24 @@
     missile() {
       if (this.ctx) this._noise(this.playerBus, 0.3, 700, 0.14, undefined, 'bandpass', 1.5, 3500);
     }
+    // Treffer an der Hülle: metallischer Schlag, bei wenig Energie tiefer und rauer
+    playerHit(left = 1) {
+      if (!this.ctx) return;
+      const t = this.ctx.currentTime;
+      this._noise(this.playerBus, 0.22, 2200, 0.45, t, 'bandpass', 3, 500);
+      this._tone(this.playerBus, 140 + 160 * left, 0.25, 'sawtooth', 0.22, t, 60);
+      this._tone(this.playerBus, 1900, 0.08, 'square', 0.08, t, 900);
+      this.duck(t, 0.3, 0.3);
+    }
+    // Warnung bei knapper Energie (Sample aus sounds/, sonst zwei Pieptöne); liefert die Länge in s
+    lowEnergy() {
+      if (!this.ctx) return 0.9;
+      const t = this.ctx.currentTime;
+      if (this._sample(this.playerBus, 'warning_energy', t, 0.9)) return this.sampleMeta.warning_energy.len;
+      this._tone(this.playerBus, 880, 0.09, 'square', 0.07, t);
+      this._tone(this.playerBus, 660, 0.12, 'square', 0.07, t + 0.12);
+      return 0.9;
+    }
     shieldHit() {
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
@@ -379,6 +397,9 @@
     powerup(type = 'W') {
       if (!this.ctx) return;
       const t = this.ctx.currentTime;
+      // Eigene Pickup-Sounds für Schild, Energie und Raketen
+      const own = { S: 'pickup_shield', E: 'pickup_energy', M: 'pickup_missile' }[type];
+      if (own && this._sample(this.playerBus, own, t, 1)) return;
       const seq = { W: [0, 4, 7, 12], S: [0, 7, 12, 19], E: [0, 5, 9, 12], M: [12, 7, 12, 19], R: [0, 12, 0, 12, 24],
         X: [0, 3, 7, 10, 15], L: [0, 4, 7, 12, 16, 19, 24] }[type] || [0, 4, 7, 12];
       const wave = type === 'M' || type === 'R' ? 'square' : 'triangle';

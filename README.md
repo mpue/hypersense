@@ -68,8 +68,20 @@ Firewall eingehende Verbindungen auf Port 5180 für Node erlauben.
 
 ## Spielprinzip
 
-- **HUD** wie im Zielbild: Links die HYPER-Ladung mit dem Waffenbuchstaben (A–D), rechts die
-  Drohnen-Energie mit dem Drohnen-Modus. In der Mitte stehen Punkte, Song, Leben und Multiplikator.
+- **Hüllenenergie:** Treffer ziehen Energie ab, bei 0 ist ein Leben verloren.
+  - Kugel etwa ⅓, große Kugel 45 %, Nadel ¼
+  - Rumpf-Berührung 40 % (dabei wirst du aus der Wand geschubst), Laserstrahl 60 %
+  - Rammen von Kanonenfutter 40 %, das Futter platzt dabei
+  - Nach einem Treffer bist du kurz unverwundbar, der Schild fängt Treffer vorher ab.
+  - E-Kapseln heilen 40 % und fallen häufiger, wenn die Energie knapp ist. Nach dem Wiedereinstieg ist die
+    Energie voll.
+  - Unter 26 % ertönt ein Warnton.
+- **HUD** wie im Zielbild:
+  - links die **ENERGY**-Leiste des Schiffs (grün, gelb, rot, blinkt, wenn es knapp wird) mit dem
+    Waffenbuchstaben (A–E), darüber eine schmale HYPER-Leiste
+  - rechts die Drohnen-Energie mit dem Drohnen-Modus
+  - in der Mitte Punkte, Song, Leben und Multiplikator
+  - unter dem Schiff eine kleine Energieleiste nach Treffern und bei knapper Energie
 - **Drohne:** Sie fliegt mit, feuert mit und fängt feindliche Geschosse ab, was Energie kostet.
   Bei 0 fällt sie aus und lädt sich wieder auf.
 - **HYPER:** Die Ladung kommt aus Abschüssen. Dann schmilzt ein Takt lang ein Strahl alles in seiner Bahn,
@@ -160,6 +172,7 @@ acht Beats lang auf jedem Schlag.
   |---|---|---|
   | Firepower | +10 % Schaden für Schüsse und Raketen | 5 |
   | Start Weapon | Start mit Waffe B/C, nach einem Tod nie darunter | 2 |
+  | Reinforced Hull | +25 % Hüllenenergie | 3 |
   | Armor Plating | Start und Wiedereinstieg mit 1/2 Schild-Treffern | 2 |
   | Extra Ship | +1 Leben | 2 |
   | Drone Core | Drohne hält mehr aus und lädt schneller | 3 |
@@ -214,7 +227,17 @@ python tools/scan_sfx.py D:/samples/ExplosionSounds > art/sfx_scan.tsv   # Läng
 python tools/make_sfx.py                                                 # gewählte Samples -> public/sfx/
 ```
 
-Welche Samples genommen werden, steht oben in `tools/make_sfx.py`. Mischung (`public/js/audio.js`):
+Welche Samples genommen werden, steht oben in `tools/make_sfx.py`. Dasselbe Skript übernimmt auch die eigenen
+Sounds aus `sounds/` unverändert:
+
+| Datei | Wofür |
+|---|---|
+| `shiedl_pickup.mp3` | Schild-Kapsel eingesammelt |
+| `energy_pickup.mp3` | Energie-Kapsel eingesammelt |
+| `missile_pickup.mp3` | Raketen-Kapsel eingesammelt |
+| `warning_energy.mp3` | Warnung bei knapper Energie (wiederholt im Abstand seiner Länge) |
+
+Mischung (`public/js/audio.js`):
 
 - **klein / mittel / groß:** je nach Gegner, reihum und leicht verstimmt. Darüber liegen ein harter
   Anschlag und ein Sub-Stoß (`_punch`).

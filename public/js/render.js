@@ -9,7 +9,7 @@
   const FONT = '"Orbitron", "Segoe UI", sans-serif';
 
   // Incubator-Layout (auch für die Treffer-Tests der Touch-/Maus-Eingabe in main.js)
-  const INC = { x0: 1000, y0: 215, rowH: 78, w: 830, back: { x: 70, y: 950, w: 280, h: 80 },
+  const INC = { x0: 1000, y0: 215, rowH: 72, w: 830, back: { x: 70, y: 950, w: 280, h: 80 },
     titleBtn: { x: W / 2 - 230, y: 675, w: 460, h: 70 } };
 
   // Touch-Knöpfe (in 1920×1080-Koordinaten), rechts für den Daumen
@@ -181,6 +181,10 @@
       this.foreground(dt, speed);
       if (g && g.flash > 0) {
         c.fillStyle = `rgba(200,230,255,${g.flash * 0.55})`;
+        c.fillRect(0, 0, W, H);
+      }
+      if (g && g.hurtFlash > 0) {               // Treffer an der Hülle: roter Blitz
+        c.fillStyle = `rgba(255,40,60,${g.hurtFlash * 0.4})`;
         c.fillRect(0, 0, W, H);
       }
       this.vignette();
@@ -609,6 +613,16 @@
           c.beginPath(); c.moveTo(px + 60, p.y); c.lineTo(px - 50, p.y - 26); c.lineTo(px - 40, p.y); c.lineTo(px - 50, p.y + 26); c.fill();
         }
       }
+      // Kleine Energieleiste direkt unter dem Schiff: nach einem Treffer und solange die Energie knapp ist
+      const ek = clamp(g.energy / g.st.hullMax, 0, 1);
+      if (g.energyShow > 0 || ek < 0.35) {
+        c.globalAlpha = g.energyShow > 0 ? Math.min(1, g.energyShow * 2) : 0.85;
+        c.fillStyle = 'rgba(0,0,0,0.6)';
+        c.fillRect(p.x - 48, p.y + 44, 96, 9);
+        c.fillStyle = ek > 0.6 ? '#8dff7a' : ek > 0.3 ? '#ffd24a' : '#ff4a5a';
+        c.fillRect(p.x - 46, p.y + 46, 92 * ek, 5);
+        c.globalAlpha = 1;
+      }
       // Schildblase, dünner mit jedem abgefangenen Treffer
       if (g.shield > 0) {
         const r = 62 + 3 * Math.sin(performance.now() / 90);
@@ -632,7 +646,7 @@
 
     // ------------------------------------------------------------------ HUD
 
-    gauge(x, y, w, k, mirror, letter, icon, label, ready) {
+    gauge(x, y, w, k, mirror, letter, icon, label, ready, color) {
       const c = this.c, fr = this.gaugeFrame(w);
       c.save();
       c.translate(x, y);
@@ -641,12 +655,23 @@
       const n = 22, sw = (w - 120) / n;
       c.fillStyle = 'rgba(80,140,190,0.25)';
       for (let i = 0; i < n; i++) if (i / n >= k) c.fillRect(20 + i * sw, 45, sw - 4, 11);
-      c.fillStyle = ready ? (Math.floor(performance.now() / 150) % 2 ? '#ffffff' : '#9dff8a') : '#bfeeff';
+      c.fillStyle = ready ? (Math.floor(performance.now() / 150) % 2 ? '#ffffff' : '#9dff8a') : (color || '#bfeeff');
       for (let i = 0; i < n; i++) if (i / n < k) c.fillRect(20 + i * sw, 45, sw - 4, 11);
       c.restore();
       if (icon) this.spr(icon, x + (mirror ? -1 : 1) * (w - 22), y + 44, 30, { flip: mirror && icon === 'player' });
       this.glowText(letter, `700 52px ${FONT}`, '#dff6ff', '#3fb4ff', 14, x + (mirror ? -1 : 1) * (w + 50), y + 68);
       this.glowText(label, `600 14px ${FONT}`, 'rgba(190,230,255,0.7)', '', 0, x + (mirror ? -1 : 1) * (w / 2 - 20), y + 100);
+    }
+
+    // Schmale HYPER-Leiste über der Energie; blinkt mit "READY", wenn der Strahl bereit ist
+    hyperBar(g, x, y) {
+      const c = this.c, w = 300, ready = g.charge >= 1;
+      this.glowText('HYPER', `700 16px ${FONT}`, ready ? '#9dff8a' : 'rgba(205,239,255,0.75)', '', 0, x, y + 6, 'left');
+      c.fillStyle = 'rgba(80,140,190,0.25)';
+      c.fillRect(x + 80, y - 5, w, 8);
+      c.fillStyle = ready ? (Math.floor(performance.now() / 150) % 2 ? '#ffffff' : '#9dff8a') : '#8fe0ff';
+      c.fillRect(x + 80, y - 5, w * clamp(g.charge, 0, 1), 8);
+      if (ready) this.glowText('READY  [X]', `700 16px ${FONT}`, '#9dff8a', '#3fff7a', 6, x + w + 96, y + 6, 'left');
     }
 
     // Statuszeile über dem HUD: Schild, Raketen und die Zeit-Power-ups mit Restbalken
@@ -684,8 +709,13 @@
     hud(g, st) {
       const c = this.c, y = 950;
       this.coinLabel(40, 62, g.runCoins, 30);
-      this.gauge(110, y, 440, g.charge, false, 'ABCDE'[g.weapon - 1], 'player', 'HYPER  [X]', g.charge >= 1);
-      this.powerRow(g, st, y - 22);
+      // Links: Hüllenenergie des Schiffs (grün -> gelb -> rot, blinkt, wenn es knapp wird)
+      const ek = clamp(g.energy / g.st.hullMax, 0, 1);
+      const low = ek < 0.26 && Math.floor(performance.now() / 180) % 2 === 0;
+      const ecol = ek > 0.6 ? '#8dff7a' : ek > 0.3 ? '#ffd24a' : (low ? '#ffffff' : '#ff4a5a');
+      this.gauge(110, y, 440, ek, false, 'ABCDE'[g.weapon - 1], 'player', 'ENERGY', false, ecol);
+      this.hyperBar(g, 130, y - 28);
+      this.powerRow(g, st, y - 58);
       this.gauge(W - 110, y, 440, g.droneE, true, g.droneMode ? 'B' : 'A', 'drone', 'DRONE  [C]', false);
       this.glowText(String(Math.floor(g.score)).padStart(8, '0'), `700 62px ${FONT}`, '#e8fbff', '#3fb4ff', 16, W / 2, y + 48);
       c.fillStyle = 'rgba(143,224,255,0.8)';
