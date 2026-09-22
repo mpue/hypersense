@@ -186,6 +186,7 @@
 
       if (g && g.shake > 0) c.translate((Math.random() - 0.5) * g.shake, (Math.random() - 0.5) * g.shake);
       this.background(dt, speed, st);
+      if (g) this.scenery(g, st); else this.titleScenery();
       if (g) this.world(g, st);
       c.setTransform(r, 0, 0, r, 0, 0);
       this.foreground(dt, speed);
@@ -284,6 +285,218 @@
       c.drawImage(this.vig, 0, 0);
     }
 
+    // ------------------------------------------------------------------ Kulissen
+
+    // Kulissen-Sprite in Dunst getaucht (je weiter weg, desto dunkler und blauer), pro Stufe einmal gerendert
+    hazed(name, haze) {
+      const im = this.img[name];
+      if (!im) return null;
+      const q = Math.round(clamp(haze, 0, 0.95) * 20);
+      if (!this.hazeCache) this.hazeCache = new Map();
+      let cv = this.hazeCache.get(name + q);
+      if (!cv) { cv = tinted(im, '#050a18', q / 20); this.hazeCache.set(name + q, cv); }
+      return cv;
+    }
+
+    // Lichtpunkte eines Sprites, einmal aus den Pixeln gelesen (normiert 0..1):
+    // Triebwerke (helles Blau im hinteren Fünftel), Mastspitze, Bug und verstreute Rumpfpunkte
+    lightsOf(name) {
+      if (!this.lightCache) this.lightCache = {};
+      if (name in this.lightCache) return this.lightCache[name];
+      const im = this.img[name];
+      let res = null;
+      if (im) {
+        const w = 240, h = Math.max(1, Math.round(w * im.height / im.width));
+        const cv = document.createElement('canvas');
+        cv.width = w; cv.height = h;
+        const c = cv.getContext('2d', { willReadFrequently: true });
+        c.drawImage(im, 0, 0, w, h);
+        const d = c.getImageData(0, 0, w, h).data, eng = new Map(), solid = [];
+        let top = null, left = null;
+        for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+          const i = (y * w + x) * 4;
+          if (d[i + 3] < 150) continue;
+          if (!top) top = [x / w, y / h];
+          if (!left || x / w < left[0]) left = [x / w, y / h];
+          if ((x * 7 + y * 13) % 53 === 0) solid.push([x / w, y / h]);
+          const r = d[i], gg = d[i + 1], b = d[i + 2];
+          if (x > w * 0.8 && b > 185 && b > r + 20 && r + gg + b > 460) {
+            const k = Math.round(y / h * 10), e = eng.get(k) || { x: 0, y: 0, n: 0 };
+            e.x += x / w; e.y += y / h; e.n++; eng.set(k, e);
+          }
+        }
+        const engines = [...eng.values()].filter(e => e.n >= 2).sort((a, b) => b.n - a.n).slice(0, 3)
+          .map(e => [e.x / e.n, e.y / e.n]);
+        res = { top, left, engines, solid };
+      }
+      return (this.lightCache[name] = res);
+    }
+
+    // Ein Kulissen-Stück mit Lichtern. s: { kind, h, y, flip, top }, x = linker Rand auf dem Bildschirm
+    piece(name, s, x, haze, now) {
+      const im = this.img[name], cv = this.hazed(name, haze), c = this.c;
+      const h = s.h, w = h * im.width / im.height, li = this.lightsOf(name), la = 1 - haze * 0.55;
+      c.save();
+      c.translate(x + (s.flip ? w : 0), s.y);
+      if (s.flip) c.scale(-1, 1);
+      if (s.top) { c.translate(0, h); c.scale(1, -1); }
+      if (s.kind === 'station') {
+        c.save();
+        c.translate(w / 2, h / 2);
+        c.rotate(now * 0.025);
+        c.drawImage(cv, -w / 2, -h / 2, w, h);
+        c.restore();
+      } else c.drawImage(cv, 0, 0, w, h);
+      if (li && this.quality === 'high') {
+        c.globalCompositeOperation = 'lighter';
+        const u = h / 300;
+        // Triebwerke: flackerndes Glühen plus ein langer Abgasschweif nach hinten
+        for (const [ex, ey] of li.engines) {
+          const f = 0.8 + 0.2 * Math.sin(now * 37 + ey * 50);
+          c.globalAlpha = la * f * 0.9;
+          c.drawImage(this.glows.blue, ex * w - 30 * u, ey * h - 30 * u, 60 * u, 60 * u);
+          c.globalAlpha = la * f * 0.5;
+          c.drawImage(this.glows.blue, ex * w - 10 * u, ey * h - 14 * u, 150 * u * f, 28 * u);
+        }
+        // Positionslichter: rot blinkend auf der Mastspitze, weiß am Bug
+        const ph = (now * 0.9 + s.h * 0.013) % 1;
+        if (li.top && ph < 0.1) {
+          if (!this.glows.red) this.glows.red = glow('#ff2a1a', 16, 0.35);
+          c.globalAlpha = la * 0.8;
+          c.drawImage(this.glows.red, li.top[0] * w - 9, li.top[1] * h - 9, 18, 18);
+        }
+        if (li.left && s.kind !== 'spire' && s.kind !== 'station' && ((ph + 0.5) % 1) < 0.08) {
+          c.globalAlpha = la * 0.8;
+          c.drawImage(this.glows.white, li.left[0] * w - 9, li.left[1] * h - 9, 18, 18);
+        }
+        // Werft und Station: Schweißfunken bzw. langsam pulsierende Lichter
+        if (s.kind === 'shipyard' || s.kind === 'station') {
+          const n = Math.min(li.solid.length, 14);
+          for (let i = 0; i < n; i++) {
+            const p = li.solid[(i * 17) % li.solid.length];
+            const k = s.kind === 'shipyard' ? ((now * 2.3 + i * 0.37) % 1 < 0.12 ? 1 : 0) : 0.5 + 0.5 * Math.sin(now * 1.5 + i);
+            if (k < 0.05) continue;
+            c.globalAlpha = la * k * 0.8;
+            c.drawImage(s.kind === 'shipyard' ? this.glows.white : this.glows.orange, p[0] * w - 8, p[1] * h - 8, 16, 16);
+          }
+        }
+        c.globalAlpha = 1;
+        c.globalCompositeOperation = 'source-over';
+      }
+      c.restore();
+      return w;
+    }
+
+    // Kulissen des Levels (L.scenery), nach Tiefe sortiert; danach Gefechte und die Hangarwand im Korridor
+    scenery(g, st) {
+      const L = g.L, t = st.songT, now = performance.now() / 1000, ships = [];
+      if (L.scenery) for (const s of L.scenery) {
+        if (t < s.t0 || t > s.t1 + 3) continue;
+        const name = s.kind === 'dread' ? 'dread' + (s.v0 % 4 + 1) : s.kind === 'spire' ? 'spire' + (s.v0 % 3 + 1) : s.kind;
+        const im = this.img[name];
+        if (!im) continue;
+        const w = s.h * im.width / im.height;
+        const x = (s.ally ? -w - 20 : s.x0) + s.v * (t - s.t0);
+        if (x > W + 40 || x + w < -40) continue;
+        const haze = s.kind === 'station' || s.kind === 'shipyard' ? 0.72
+          : s.kind === 'spire' ? 0.8 - s.par * 0.3 : (s.kind === 'cruiser' ? 0.86 : 0.76) - s.par * 0.5;
+        this.piece(name, s, x, haze, now);
+        if (s.kind === 'dread' || s.kind === 'cruiser') ships.push({ s, name, w, x });
+      }
+      this.battle(g, st, ships);
+      this.backwall(g, st);
+    }
+
+    // Gefecht im Hintergrund: auf starken Noten feuern die Großkampfschiffe aufeinander (Leuchtspur + Einschlag)
+    battle(g, st, ships) {
+      const fx = this.bgFx || (this.bgFx = []), t = st.songT, notes = g.L.notes, c = this.c;
+      if (this.bgL !== g.L || t < this.bgT - 0.5) {
+        this.bgL = g.L; this.bgNote = 0; fx.length = 0;
+        while (this.bgNote < notes.length && notes[this.bgNote].t < t) this.bgNote++;
+      }
+      this.bgT = t;
+      const at = (q, p) => ({ x: q.x + (q.s.flip ? 1 - p[0] : p[0]) * q.w, y: q.s.y + p[1] * q.s.h });
+      const spot = q => { const L = this.lightsOf(q.name); return L && L.solid.length ? L.solid[Math.floor(Math.random() * L.solid.length)] : [0.5, 0.5]; };
+      while (this.bgNote < notes.length && notes[this.bgNote].t <= t) {
+        const n = notes[this.bgNote++];
+        if (!n.strong || !ships.length || this.quality !== 'high') continue;
+        const src = ships[Math.floor(Math.random() * ships.length)];
+        const foes = ships.filter(q => !!q.s.ally !== !!src.s.ally);
+        const dst = foes.length ? foes[Math.floor(Math.random() * foes.length)] : null;
+        const a = at(src, spot(src));
+        const b = dst ? at(dst, spot(dst)) : { x: a.x + (src.s.flip ? 1 : -1) * 900, y: a.y + (Math.random() - 0.5) * 300 };
+        fx.push({ a, b, t0: t, hit: !!dst, ally: !!src.s.ally, u: src.s.h / 300 });
+      }
+      c.globalCompositeOperation = 'lighter';
+      for (let i = fx.length - 1; i >= 0; i--) {
+        const f = fx[i], k = (t - f.t0) / 0.5;
+        if (k > 1.5 || k < 0) { fx.splice(i, 1); continue; }
+        const col = f.ally ? '120,220,255' : '255,170,80';
+        if (k < 1) {
+          const h0 = Math.max(0, k - 0.22);
+          c.strokeStyle = `rgba(${col},0.55)`;
+          c.lineWidth = 3 * f.u;
+          c.beginPath();
+          c.moveTo(f.a.x + (f.b.x - f.a.x) * h0, f.a.y + (f.b.y - f.a.y) * h0);
+          c.lineTo(f.a.x + (f.b.x - f.a.x) * k, f.a.y + (f.b.y - f.a.y) * k);
+          c.stroke();
+          if (k < 0.3) this.dot(f.ally ? this.glows.blue : this.glows.orange, f.a.x, f.a.y, 26 * f.u, 0.6 * (1 - k / 0.3));
+        } else if (f.hit) this.dot(this.glows.fire, f.b.x, f.b.y, (30 + 40 * (k - 1)) * f.u, 0.55 * (1.5 - k) * 2);
+      }
+      c.globalCompositeOperation = 'source-over';
+    }
+
+    // Hangarwand hinter den Korridoren: man fliegt durch das Innere der Station
+    backwall(g, st) {
+      const L = g.L, bw = this.img.backwall, c = this.c;
+      if (!bw || !L.corridors.length) return;
+      const P = 0.7, F = L.FLOOR_Y, ts = 512, ppb = L.PX_PER_BEAT;
+      if (!this.bwTile) {
+        const cv = document.createElement('canvas');
+        cv.width = cv.height = ts;
+        const x = cv.getContext('2d');
+        x.drawImage(bw, 0, 0, ts, ts);
+        x.fillStyle = 'rgba(3,6,16,0.72)';
+        x.fillRect(0, 0, ts, ts);
+        this.bwTile = cv;
+      }
+      const pulse = Math.exp(-(((st.beat % 1) + 1) % 1) * 4);
+      for (const co of L.corridors) {
+        const x0 = W + (co.b0 * ppb - g.scroll) * P, x1 = W + (co.b1 * ppb - g.scroll) * P;
+        if (x0 > W || x1 < 0) continue;
+        const a = Math.max(0, x0), b = Math.min(W, x1), off = g.scroll * P;
+        c.save();
+        c.beginPath(); c.rect(a, 0, b - a, F); c.clip();
+        for (let x = Math.floor((a + off) / ts) * ts - off; x < b; x += ts)
+          for (let y = 0; y < F; y += ts) c.drawImage(this.bwTile, Math.round(x), y);
+        // Lichtsäulen im Takt
+        c.globalCompositeOperation = 'lighter';
+        c.fillStyle = `rgba(70,160,255,${0.05 + 0.12 * pulse})`;
+        for (let x = Math.floor((a + off) / 384) * 384 - off + 190; x < b; x += 384) c.fillRect(Math.round(x), 0, 5, F);
+        c.globalCompositeOperation = 'source-over';
+        c.restore();
+        // Schotten an Anfang und Ende der Wand
+        for (const ex of [x0, x1]) {
+          if (ex < -60 || ex > W + 60) continue;
+          c.fillStyle = '#04060c';
+          c.fillRect(ex - 34, 0, 68, F);
+          c.fillStyle = 'rgba(90,180,255,0.5)';
+          c.fillRect(ex - 3, 0, 2, F);
+          c.fillStyle = '#10151f';
+          c.fillRect(ex + 20, 0, 6, F);
+          c.fillRect(ex - 26, 0, 6, F);
+        }
+      }
+    }
+
+    // Titelbild: ein Dreadnought zieht langsam vorbei
+    titleScenery() {
+      if (!this.img.dread2) return;
+      const now = performance.now() / 1000, s = { kind: 'dread', h: 330, y: 610 };
+      const w = s.h * this.img.dread2.width / this.img.dread2.height, span = W + w + 900;
+      this.piece('dread2', s, W + 300 - ((now * 45) % span), 0.42, now);
+    }
+
     // Rumpf der Raumstation. Jedes Modul wird beim ersten Erscheinen einmal fertig gerendert
     // (Textur, Schattierung, Stufenkante, Rohr-Streifen, Leuchtlinie) und danach nur noch als ein
     // Bild gezeichnet. Großflächige Muster-Füllungen pro Frame waren auf der GPU zu teuer.
@@ -300,6 +513,71 @@
       }
       // Module, die links hinausgescrollt sind, vergessen
       if (this.hullCache.size > seen.size + 8) for (const k of this.hullCache.keys()) if (!seen.has(k)) this.hullCache.delete(k);
+    }
+
+    // Aufbauten auf dem Rumpf (nur einmal beim Vorrendern): Schottrippen, Fensterreihen, Warnstreifen,
+    // glühende Lüftungsgitter und Reaktorluken. Alles bleibt innerhalb des Rumpfs (Kollision unverändert).
+    hullDetail(c, m, top, edge, b0, b1, w) {
+      const r = Level.mulberry32((m.wx | 0) * 7 + (top ? 3 : 0));
+      const at = k => top ? edge - k : edge + k;             // y in Tiefe k, von der Kante weg
+      const deep = b1 - b0;
+      // Schottrippen
+      const ribs = [];
+      for (let x = 40 + r() * 80; x < w - 20; x += 110 + r() * 70) ribs.push(x);
+      for (const x of ribs) {
+        c.fillStyle = 'rgba(0,0,6,0.55)'; c.fillRect(x, b0, 12, deep);
+        c.fillStyle = 'rgba(160,190,230,0.18)'; c.fillRect(x + 12, b0, 2, deep);
+      }
+      // Warnstreifen dicht an der Kante
+      if (m.v === 2 || r() < 0.3) {
+        const y = Math.min(at(34), at(46));
+        c.save();
+        c.beginPath(); c.rect(0, y, w, 12); c.clip();
+        c.fillStyle = 'rgba(20,18,10,0.85)'; c.fillRect(0, y, w, 12);
+        c.fillStyle = 'rgba(210,160,40,0.7)';
+        for (let x = -20; x < w; x += 28) { c.beginPath(); c.moveTo(x, y + 12); c.lineTo(x + 12, y); c.lineTo(x + 24, y); c.lineTo(x + 12, y + 12); c.fill(); }
+        c.restore();
+      }
+      // Fensterreihen zwischen den Rippen
+      const rows = m.h >= 170 ? 2 : m.h >= 125 ? 1 : 0;
+      for (let row = 0; row < rows; row++) {
+        const y = at(70 + row * 42) - 6;
+        for (let i = 0; i <= ribs.length; i++) {
+          const xa = (i ? ribs[i - 1] + 24 : 14), xb = (i < ribs.length ? ribs[i] - 10 : w - 14);
+          if (r() < 0.25) continue;
+          const warm = r() < 0.2;
+          for (let x = xa; x + 7 < xb; x += 17) {
+            if (r() < 0.3) continue;
+            c.fillStyle = warm ? 'rgba(255,190,110,0.75)' : 'rgba(140,210,255,0.7)';
+            c.fillRect(x, y, 7, 11);
+            c.fillStyle = warm ? 'rgba(255,170,80,0.12)' : 'rgba(90,170,255,0.12)';
+            c.fillRect(x - 4, y - 4, 15, 19);
+          }
+        }
+      }
+      // Glühende Lüftungsgitter
+      const vents = m.h >= 115 ? 1 + Math.floor(r() * 2) : 0;
+      for (let i = 0; i < vents; i++) {
+        const vw = 60 + Math.floor(r() * 3) * 20, x = 30 + r() * (w - vw - 60), y = at(top ? 58 + 26 : 58);
+        c.fillStyle = '#07080c'; c.fillRect(x - 3, y - 3, vw + 6, 32);
+        const gr = c.createLinearGradient(0, y, 0, y + 26);
+        gr.addColorStop(0, 'rgba(255,90,30,0.25)'); gr.addColorStop(0.5, 'rgba(255,150,60,0.8)'); gr.addColorStop(1, 'rgba(255,90,30,0.25)');
+        c.fillStyle = gr; c.fillRect(x, y, vw, 26);
+        c.fillStyle = '#0b0c10';
+        for (let sx = x + 6; sx < x + vw; sx += 10) c.fillRect(sx, y, 4, 26);
+      }
+      // Reaktorluke auf großen Modulen
+      if (m.h >= 165 && m.w >= 500 && r() < 0.6) {
+        const cx = 80 + r() * (w - 160), cy = at(m.h * 0.62), rad = Math.min(38, m.h * 0.2);
+        c.fillStyle = '#05060a';
+        c.beginPath(); c.arc(cx, cy, rad + 7, 0, TAU); c.fill();
+        const gr = c.createRadialGradient(cx, cy, 0, cx, cy, rad);
+        gr.addColorStop(0, 'rgba(210,245,255,0.95)'); gr.addColorStop(0.35, 'rgba(70,170,255,0.8)'); gr.addColorStop(1, 'rgba(10,40,90,0.9)');
+        c.fillStyle = gr;
+        c.beginPath(); c.arc(cx, cy, rad, 0, TAU); c.fill();
+        c.strokeStyle = 'rgba(0,0,0,0.7)'; c.lineWidth = 4;
+        for (let k = 0; k < 3; k++) { const a = k * TAU / 3; c.beginPath(); c.moveTo(cx, cy); c.lineTo(cx + Math.cos(a) * rad, cy + Math.sin(a) * rad); c.stroke(); }
+      }
     }
 
     bakeHull(m, F) {
@@ -321,6 +599,7 @@
       // Schattierung zur Tiefe hin
       if (top) { c.save(); c.translate(0, edge); c.scale(1, -1); c.drawImage(this.shade, 0, 0, cv.width, Math.min(160, edge)); c.restore(); }
       else c.drawImage(this.shade, 0, edge, cv.width, 160);
+      this.hullDetail(c, m, top, edge, b0, b1, cv.width);
       // Stufenkante links
       c.fillStyle = 'rgba(0,0,0,0.6)';
       c.fillRect(0, b0, 3, b1 - b0);

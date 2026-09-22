@@ -19,6 +19,9 @@
     worm_head: 'worm_head.png', worm_segment: 'worm_segment.png', splitter: 'splitter.png',
     hull1: 'hull1.png', hull2: 'hull2.png', hull3: 'hull3.png', hull4: 'hull4.png',
     hulltex1: 'hulltex1.jpg', hulltex2: 'hulltex2.jpg', coin: 'coin.png', incubator: 'incubator.jpg', planet: 'planet.png', galaxy: 'galaxy.jpg', nebula: 'nebula.jpg', explosion: 'explosion.jpg',
+    dread1: 'dread1.webp', dread2: 'dread2.webp', dread3: 'dread3.webp', dread4: 'dread4.webp', cruiser: 'cruiser.webp',
+    station: 'station.webp', shipyard: 'shipyard.webp', spire1: 'spire1.webp', spire2: 'spire2.webp', spire3: 'spire3.webp',
+    backwall: 'backwall.jpg',
   };
 
   const loadImage = (name, file) => new Promise(res => {
@@ -292,6 +295,7 @@
       god: params.get('god') === '1', autoFire: params.get('auto') === '1', stats: save.stats(),
       rumble: (s, w, ms) => { if (input.device === 'gamepad') input.pad.rumble(s, w, ms); },
     });
+    if (params.get('stats') === '1') window.hsGame = game;   // Debug-Zugriff in der Konsole
     const from = Number(params.get('at')) || 0;
     audio.play(buffer, from > 0 ? from : -2);
     if (from > 0) game.seek(from);

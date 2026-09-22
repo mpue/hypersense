@@ -37,7 +37,19 @@ SPRITES = {
     "hull2": ("hull_23", 1536, 512),
     "hull3": ("hull_37", 1536, 512),
     "hull4": ("hull_41", 1536, 512),
+    # Kulissen
+    "dread1": ("dread_11", 1500, 600),
+    "dread2": ("dread_23", 1500, 600),
+    "dread3": ("dread_37", 1500, 600),
+    "dread4": ("dread_41", 1500, 600),
+    "cruiser": ("cruiser_23", 1400, 560),
+    "station": ("station_23", 900, 900),
+    "shipyard": ("shipyard_11", 1500, 640),
+    "spire1": ("spire_11", 560, 1400),
+    "spire2": ("spire_23", 560, 1400),
+    "spire3": ("spire_37", 560, 1400),
 }
+SCENERY = {"dread", "cruiser", "station", "shipyard", "spire"}
 ADDITIVE = {  # name: (raw file, max width)
     "galaxy": ("galaxy_11", 1024),
     "nebula": ("nebula_23", 1536),
@@ -50,6 +62,7 @@ BACKDROPS = {  # name: (raw file, max width) – deckende Vollbild-Hintergründe
 TEXTURES = {  # name: (raw file, size) – deckend, als Kachel
     "hulltex1": ("hulltex_11", 512),
     "hulltex2": ("hulltex_23", 512),
+    "backwall": ("backwall_11", 512),
 }
 
 
@@ -105,7 +118,11 @@ def main():
         f = RAW / f"{src}.png"
         if not f.exists():
             print("missing", f.name); continue
-        crop_fit(key_green(Image.open(f)), mw, mh).save(OUT / f"{name}.png", optimize=True)
+        im = crop_fit(key_green(Image.open(f)), mw, mh)
+        if name.rstrip("0123456789") in SCENERY:      # große Kulissen als WebP (ein Bruchteil der PNG-Größe)
+            im.save(OUT / f"{name}.webp", quality=84, method=6)
+        else:
+            im.save(OUT / f"{name}.png", optimize=True)
         print("sprite", name)
     for name, (src, mw) in ADDITIVE.items():
         f = RAW / f"{src}.png"

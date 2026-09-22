@@ -131,7 +131,14 @@ Firewall eingehende Verbindungen auf Port 5180 für Node erlauben.
   den Takt-Einsen, Fächer auf betonten Noten und Zwillingsschüsse auf den übrigen.
 - **Die Welt scrollt im Takt** (110 Pixel pro Beat). In mittellauten 8-Takt-Blöcken fliegt man durch
   **Korridore einer Raumstation**: Rumpf oben und unten mit wechselnder Höhe, Berührung ist tödlich,
-  und Geschütztürme sitzen darauf.
+  und Geschütztürme sitzen darauf. Der Rumpf trägt Schottrippen, Fensterreihen, Warnstreifen, glühende
+  Lüftungsgitter und Reaktorluken, dahinter liegt die Hangarwand der Station mit Lichtsäulen im Takt.
+- **Kulissen** (`L.scenery`, reine Optik): Jeder 8-Takt-Block bekommt ein Bild passend zur Stimmung.
+  Bei Drops und lauten Passagen ziehen Dreadnoughts vorbei, bei Drops mit einem verbündeten Kreuzer, der
+  von links überholt, und die Schiffe beschießen sich auf den betonten Noten. In ruhigen Passagen wachsen
+  Megatürme aus der Tiefe, weit hinten drehen sich Ringstationen und liegen Werften mit Schweißfunken.
+  Alles liegt je nach Tiefe im Dunst, damit Gegner und Schüsse lesbar bleiben. Kollision und Wellen
+  sind davon unberührt.
 
 ### Gegner
 
@@ -226,7 +233,8 @@ python tools/key_assets.py            # gewählte Varianten -> public/assets/
 
 Welche Variante genommen wird, steht oben in `tools/key_assets.py`. Sprites werden auf Greenscreen gerendert
 und freigestellt. Nebel, Galaxie und Explosion werden auf Schwarz gerendert und additiv gezeichnet,
-der Planet bekommt eine Scheibenmaske.
+der Planet bekommt eine Scheibenmaske. Triebwerke, Positionslichter und Funken der Kulissen werden beim
+Laden aus den Pixeln der Sprites gefunden (`lightsOf` in `render.js`).
 
 ## Sounds
 

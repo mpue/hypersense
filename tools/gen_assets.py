@@ -13,7 +13,7 @@ HOST = "http://127.0.0.1:8188"
 ROOT = Path(__file__).resolve().parent.parent
 RAW = ROOT / "art" / "raw"
 SEEDS = [11, 23]
-EXTRA_SEEDS = {"hull": [11, 23, 37, 41]}   # mehrere Rumpf-Module für Abwechslung
+EXTRA_SEEDS = {"hull": [11, 23, 37, 41], "dread": [11, 23, 37, 41], "spire": [11, 23, 37]}   # mehrere Rumpf-Module für Abwechslung
 
 GREEN = ("highly detailed sci-fi video game sprite, polished 3D render, sharp clean silhouette, centered, "
          "the whole object fully visible with margin around it, isolated on a flat uniform pure bright green "
@@ -67,6 +67,25 @@ ASSETS = {
     "hulltex": ("sci-fi space station hull plating texture, heavy dark grey riveted metal panels, pipes, vents, "
                 "cable ducts and a few small glowing blue lights, flat orthographic front view filling the entire "
                 "frame edge to edge, even lighting", "no text, no frame, no border", 1024, 1024),
+    # Kulissen: riesige Bauten und Großkampfschiffe im Hintergrund (green screen -> gekeyt, abgedunkelt gezeichnet)
+    "dread": ("a colossal sci-fi dreadnought battleship, extremely long armored dark gunmetal hull with many decks, "
+              "rows of tiny lit windows, huge gun batteries, antenna towers and a tall command bridge, glowing blue "
+              "engine exhausts at the back, bow facing to the left, exact side view profile, epic scale",
+              GREEN, 1536, 640),
+    "cruiser": ("a large elegant sci-fi escort cruiser warship, sleek white and grey armored hull with blue light "
+                "strips, rows of windows, engine exhausts glowing blue at the back, bow facing to the left, exact "
+                "side view profile", GREEN, 1536, 640),
+    "station": ("a gigantic ring shaped orbital space station megastructure with a central hub, spokes, docking "
+                "arms, solar arrays and thousands of tiny lights, seen from the front", GREEN, 1024, 1024),
+    "shipyard": ("a gigantic orbital shipyard megastructure, long horizontal steel truss framework with cranes, "
+                 "scaffolding and work lights holding a half built capital ship hull, exact side view",
+                 GREEN, 1536, 640),
+    "spire": ("a colossal futuristic sci-fi megatower rising from below, tall slender dark metal spire with stacked "
+              "platforms, glowing windows, antennas and a beacon at the top, exact side view, full height visible",
+              GREEN, 640, 1536),
+    "backwall": ("interior wall of a gigantic space station hangar, dark machinery, vertical steel bulkhead ribs, "
+                 "horizontal pipes, strips of glowing blue windows and small warning lights, flat orthographic front "
+                 "view filling the entire frame edge to edge", "no text, no frame, no border, no people", 1024, 1024),
     # backdrops (black -> drawn additively / with a disc mask)
     "planet": ("a large blue earth-like planet seen from space, thin glowing blue atmosphere rim, dark night side, "
                "the entire planet visible and centered, " + "photorealistic", BLACK, 1024, 1024),
