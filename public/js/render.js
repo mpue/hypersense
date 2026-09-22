@@ -112,6 +112,16 @@
       return true;
     }
 
+    // Tasten-Hinweis passend zum zuletzt benutzten Gerät (this.device wird von main.js gesetzt)
+    key(action) {
+      const K = {
+        keyboard: { hyper: '[X]', drone: '[C]', inc: '[ I ]', ok: 'ENTER', back: 'ESC', pause: 'P / ESC' },
+        gamepad: { hyper: '[B]', drone: '[X]', inc: '[ Y ]', ok: 'A', back: 'B', pause: 'MENU' },
+        touch: { hyper: '', drone: '', inc: '', ok: 'TAP', back: 'BACK', pause: '' },
+      };
+      return (K[this.device] || K.keyboard)[action];
+    }
+
     // Leuchtender Text aus dem Cache: shadowBlur ist teuer, also nur einmal pro Text rendern
     glowText(text, font, color, glow, blur, x, y, align = 'center') {
       const key = text + '|' + font + '|' + color + '|' + blur;
@@ -671,7 +681,7 @@
       c.fillRect(x + 80, y - 5, w, 8);
       c.fillStyle = ready ? (Math.floor(performance.now() / 150) % 2 ? '#ffffff' : '#9dff8a') : '#8fe0ff';
       c.fillRect(x + 80, y - 5, w * clamp(g.charge, 0, 1), 8);
-      if (ready) this.glowText('READY  [X]', `700 16px ${FONT}`, '#9dff8a', '#3fff7a', 6, x + w + 96, y + 6, 'left');
+      if (ready) this.glowText('READY  ' + this.key('hyper'), `700 16px ${FONT}`, '#9dff8a', '#3fff7a', 6, x + w + 96, y + 6, 'left');
     }
 
     // Statuszeile über dem HUD: Schild, Raketen und die Zeit-Power-ups mit Restbalken
@@ -716,7 +726,7 @@
       this.gauge(110, y, 440, ek, false, 'ABCDE'[g.weapon - 1], 'player', 'ENERGY', false, ecol);
       this.hyperBar(g, 130, y - 28);
       this.powerRow(g, st, y - 58);
-      this.gauge(W - 110, y, 440, g.droneE, true, g.droneMode ? 'B' : 'A', 'drone', 'DRONE  [C]', false);
+      this.gauge(W - 110, y, 440, g.droneE, true, g.droneMode ? 'B' : 'A', 'drone', 'DRONE  ' + this.key('drone'), false);
       this.glowText(String(Math.floor(g.score)).padStart(8, '0'), `700 62px ${FONT}`, '#e8fbff', '#3fb4ff', 16, W / 2, y + 48);
       c.fillStyle = 'rgba(143,224,255,0.8)';
       c.fillRect(W / 2 - 150, y + 63, 300, 2);
@@ -770,25 +780,29 @@
       }
       c.font = `600 30px ${FONT}`;
       c.fillStyle = st.ready ? `rgba(232,251,255,${0.55 + 0.45 * Math.sin(performance.now() / 250)})` : '#cdefff';
-      c.fillText(st.status, W / 2, 620);
+      c.fillText(st.ready && this.device === 'gamepad' ? 'PRESS  A  TO START' : st.status, W / 2, 620);
       // Knopf zum Incubator mit dem Münzkonto
       const b = INC.titleBtn;
       c.fillStyle = 'rgba(10,24,48,0.6)';
       c.fillRect(b.x, b.y, b.w, b.h);
       c.strokeStyle = 'rgba(255,210,74,0.7)'; c.lineWidth = 2;
       c.strokeRect(b.x, b.y, b.w, b.h);
-      this.glowText(st.touch ? 'INCUBATOR' : 'INCUBATOR  [ I ]', `700 26px ${FONT}`, '#ffe07a', '#ffb020', 6, b.x + 24, b.y + 46, 'left');
+      this.glowText(('INCUBATOR  ' + this.key('inc')).trim(), `700 26px ${FONT}`, '#ffe07a', '#ffb020', 6, b.x + 24, b.y + 46, 'left');
       this.coinLabel(b.x + b.w - 20, b.y + 46, st.bank || 0, 24, 'right');
       c.font = `400 22px ${FONT}`;
       c.fillStyle = 'rgba(205,239,255,0.7)';
       c.textAlign = 'center';
-      const help = st.touch
-        ? ['TAP LEFT / RIGHT EDGE  choose song      TAP CENTER  start',
-          'DRAG ANYWHERE  fly  (auto-fire)',
-          'HYPER button  beam      DRONE button  drone mode']
-        : ['LEFT / RIGHT  choose song      ENTER  start',
-          'ARROWS / WASD  fly      SHIFT  slow      SPACE / J  fire',
-          'X  HYPER beam      C  drone mode      P / ESC  pause      F  fullscreen'];
+      const help = this.device === 'gamepad'
+        ? ['D-PAD / LB RB  choose song      A  start      Y  incubator',
+          'STICK  fly      A / RT  fire      LB / LT  slow',
+          'B / RB  HYPER beam      X  drone mode      MENU  pause']
+        : st.touch || this.device === 'touch'
+          ? ['TAP LEFT / RIGHT EDGE  choose song      TAP CENTER  start',
+            'DRAG ANYWHERE  fly  (auto-fire)',
+            'HYPER button  beam      DRONE button  drone mode']
+          : ['LEFT / RIGHT  choose song      ENTER  start      GAMEPAD  supported',
+            'ARROWS / WASD  fly      SHIFT  slow      SPACE / J  fire',
+            'X  HYPER beam      C  drone mode      P / ESC  pause      F  fullscreen'];
       help.forEach((l, i) => c.fillText(l, W / 2, 810 + i * 38));
     }
 
@@ -859,7 +873,8 @@
       c.fillStyle = 'rgba(8,18,36,0.7)'; c.fillRect(b.x, b.y, b.w, b.h);
       c.strokeStyle = 'rgba(143,224,255,0.6)'; c.lineWidth = 2; c.strokeRect(b.x, b.y, b.w, b.h);
       this.glowText('BACK', `700 28px ${FONT}`, '#dff6ff', '', 0, b.x + b.w / 2, b.y + 52);
-      this.glowText(ui.touch ? 'tap an upgrade to select, tap again to buy' : 'UP / DOWN select     ENTER buy     ESC back',
+      this.glowText(this.device === 'touch' ? 'tap an upgrade to select, tap again to buy'
+        : this.device === 'gamepad' ? 'D-PAD / STICK select     A buy     B back' : 'UP / DOWN select     ENTER buy     ESC back',
         `400 22px ${FONT}`, 'rgba(205,239,255,0.7)', '', 0, b.x + b.w + 40, b.y + 50, 'left');
     }
 
@@ -892,7 +907,8 @@
       c.textAlign = 'center';
       c.font = `600 30px ${FONT}`;
       c.fillStyle = `rgba(232,251,255,${0.55 + 0.45 * Math.sin(performance.now() / 250)})`;
-      c.fillText(st.touch ? 'TAP TO CONTINUE' : 'ENTER  continue      I  incubator', W / 2, 880);
+      c.fillText(this.device === 'touch' ? 'TAP TO CONTINUE'
+        : this.device === 'gamepad' ? 'A  continue      Y  incubator' : 'ENTER  continue      I  incubator', W / 2, 880);
     }
 
     // Touch-Steuerung: HYPER mit Ladering, Drohnen-Modus, Pause, dazu ein Ring am ziehenden Finger
@@ -941,6 +957,8 @@
       c.font = `900 90px ${FONT}`;
       c.fillStyle = '#e8fbff';
       c.fillText('PAUSE', W / 2, H / 2);
+      const hint = this.device === 'touch' ? 'TAP TO RESUME' : this.key('ok') + ' / ' + this.key('pause') + '  resume';
+      this.glowText(hint, `600 28px ${FONT}`, 'rgba(205,239,255,0.8)', '', 0, W / 2, H / 2 + 70);
     }
   }
 

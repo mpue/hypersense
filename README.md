@@ -43,15 +43,25 @@ mit `?song=Name` einen bestimmten.
 
 ## Steuerung
 
-| Taste | Gamepad | |
+| Taste | Gamepad (Xbox / PlayStation) | |
 |---|---|---|
-| Pfeile / WASD | Stick, D-Pad | fliegen |
-| Shift | LB / LT | langsam fliegen |
-| Leertaste / J / Z | A / RT | Feuer (halten) |
-| X / K | B / RB | HYPER-Strahl (wenn die linke Leiste voll ist) |
-| C / L | X / Y | Drohnen-Modus A (vorn) / B (Flanke) |
-| P / Esc | Start | Pause |
+| Pfeile / WASD | linker Stick (analog) / D-Pad | fliegen |
+| Shift | LB / LT (L1 / L2) | langsam fliegen |
+| Leertaste / J / Z | A / RT (✕ / R2) | Feuer (halten) |
+| X / K | B / RB (○ / R1) | HYPER-Strahl (wenn die HYPER-Leiste voll ist) |
+| C / L | X (□) | Drohnen-Modus A (vorn) / B (Flanke) |
+| P / Esc | Menu / View (Options / Share) | Pause |
+| Enter | A (✕) | Menüs: bestätigen, starten, kaufen |
+| Esc | B (○) | Menüs: zurück |
+| I | Y (△) | Incubator (Titel und Ergebnis) |
+| ← / → | D-Pad / Stick / LB RB | Song wählen |
 | F | | Vollbild |
+
+Gamepads im Standard-Layout werden automatisch erkannt. Der Browser meldet ein Pad erst nach dem ersten
+Tastendruck. Aktiv ist das Pad, auf dem zuletzt gedrückt wurde. Menü-Richtungen wiederholen sich beim Halten.
+Treffer, Tod, HYPER, Schildtreffer und große Explosionen lassen den Controller vibrieren, wenn er das kann.
+Wird das Pad im Spiel getrennt, pausiert das Spiel. Die Tasten-Hinweise im Spiel wechseln automatisch zwischen
+Tastatur, Gamepad und Touch.
 
 ### Handy / Touch (Querformat)
 

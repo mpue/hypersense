@@ -28,18 +28,70 @@
     im.src = 'assets/' + file;
   });
 
+  // ------------------------------------------------------------------ Gamepad
+  // Standard-Layout (Xbox / PlayStation):
+  //   0 A/✕  1 B/○  2 X/□  3 Y/△  4 LB/L1  5 RB/R1  6 LT/L2  7 RT/R2  8 View/Share  9 Menu/Options
+  //   12–15 D-Pad hoch/runter/links/rechts, Achsen 0/1 linker Stick
+  // Aktiv ist das Pad, auf dem zuletzt etwas passiert ist.
+
+  class Pad {
+    constructor() {
+      this.index = null;
+      this.prev = [];
+      this.held = {};                 // Menü-Richtungen: seit wann gehalten, wann zuletzt ausgelöst
+      this.note = null;               // Einblendung bei Verbinden/Trennen
+      this.lost = false;              // aktives Pad im Spiel getrennt -> Pause
+      const short = id => id.replace(/\(.*?\)/g, '').trim().slice(0, 40);
+      addEventListener('gamepadconnected', e => { this.note = { text: 'GAMEPAD CONNECTED', sub: short(e.gamepad.id), t: 3 }; });
+      addEventListener('gamepaddisconnected', e => {
+        if (e.gamepad.index === this.index) { this.index = null; this.lost = true; }
+        this.note = { text: 'GAMEPAD DISCONNECTED', sub: '', t: 3 };
+      });
+    }
+
+    current() {
+      const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+      for (const p of pads) {
+        if (!p || !p.connected) continue;
+        if (p.buttons.some(b => b.pressed) || p.axes.some(a => Math.abs(a) > 0.5)) {
+          if (this.index !== p.index) { this.index = p.index; this.prev = []; }   // der erste Druck zählt
+          break;
+        }
+      }
+      const p = this.index !== null ? pads[this.index] : null;
+      return p && p.connected ? p : null;
+    }
+
+    // Menü-Richtung mit Wiederholung beim Halten (erst nach 0,35 s, dann alle 0,11 s)
+    repeat(name, down, now) {
+      const h = this.held[name];
+      if (!down) { delete this.held[name]; return false; }
+      if (!h) { this.held[name] = { since: now, last: now }; return true; }
+      if (now - h.since > 350 && now - h.last > 110) { h.last = now; return true; }
+      return false;
+    }
+
+    rumble(strong, weak, ms) {
+      const p = this.index !== null && navigator.getGamepads ? navigator.getGamepads()[this.index] : null;
+      const va = p && p.vibrationActuator;
+      if (va && va.playEffect) va.playEffect('dual-rumble', { duration: ms, strongMagnitude: strong, weakMagnitude: weak }).catch(() => {});
+    }
+  }
+
   // ------------------------------------------------------------------ Eingabe
 
   class Input {
     constructor() {
       this.keys = new Set();
       this.hit = new Set();
-      this.padPrev = [];
+      this.pad = new Pad();
+      this.device = 'keyboard';        // 'keyboard' | 'gamepad' | 'touch' – für die Tasten-Hinweise
       const block = ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'F3'];
       addEventListener('keydown', e => {
         if (block.includes(e.code)) e.preventDefault();
         if (!e.repeat) this.hit.add(e.code);
         this.keys.add(e.code);
+        this.device = 'keyboard';
       });
       addEventListener('keyup', e => this.keys.delete(e.code));
       addEventListener('blur', () => this.keys.clear());
@@ -68,6 +120,7 @@
     down(e) {
       if (this.onGesture) this.onGesture(e);          // Ton im Gesten-Handler freischalten (iOS verlangt das)
       const p = this.toGame(e);
+      this.device = e.pointerType === 'mouse' ? 'keyboard' : 'touch';
       // In Menüs zählt ein Tippen/Klick mit seiner Position (Knöpfe, Liste, Song-Pfeile)
       if (this.getMode() !== 'play') { this.tap = p; if (e.pointerType !== 'mouse') this.touch = true; return; }
       if (e.pointerType === 'mouse') return;
@@ -111,26 +164,32 @@
       let back = h('Escape') || h('Backspace'), inc = h('KeyI');
       const stats = h('F3'), quality = h('KeyG');
 
-      const pad = navigator.getGamepads ? [...navigator.getGamepads()].find(p => p) : null;
+      const pad = this.pad.current();
       if (pad) {
-        const b = i => !!(pad.buttons[i] && pad.buttons[i].pressed);
-        const edge = i => b(i) && !this.padPrev[i];
-        const dz = v => (Math.abs(v) < 0.2 ? 0 : v);
-        x += dz(pad.axes[0] || 0) + (b(15) ? 1 : 0) - (b(14) ? 1 : 0);
-        y += dz(pad.axes[1] || 0) + (b(13) ? 1 : 0) - (b(12) ? 1 : 0);
+        const P = this.pad, now = performance.now();
+        const b = i => !!(pad.buttons[i] && (pad.buttons[i].pressed || pad.buttons[i].value > 0.5));
+        const edge = i => b(i) && !P.prev[i];
+        // Kreisförmige Totzone, danach analog (halb gedrückt = halbes Tempo)
+        const ax = pad.axes[0] || 0, ay = pad.axes[1] || 0, len = Math.hypot(ax, ay);
+        const sc = len < 0.2 ? 0 : Math.min(1, (len - 0.2) / 0.75) / len;
+        x += ax * sc + (b(15) ? 1 : 0) - (b(14) ? 1 : 0);
+        y += ay * sc + (b(13) ? 1 : 0) - (b(12) ? 1 : 0);
+        // Spiel
         fire = fire || b(0) || b(7);
         focus = focus || b(4) || b(6);
         hyper = hyper || edge(1) || edge(5);
-        drone = drone || edge(2) || edge(3);
-        pause = pause || edge(9);
-        start = start || edge(0) || edge(9);
-        prev = prev || edge(14);
-        next = next || edge(15);
-        up = up || edge(12);
-        down = down || edge(13);
+        drone = drone || edge(2);
+        pause = pause || edge(9) || edge(8);
+        // Menüs: A bestätigt, B zurück, Y Incubator, D-Pad/Stick navigieren, LB/RB Song wechseln
+        start = start || edge(0);
         back = back || edge(1);
         inc = inc || edge(3);
-        this.padPrev = pad.buttons.map(bt => bt.pressed);
+        up = up || P.repeat('up', b(12) || ay < -0.6, now);
+        down = down || P.repeat('down', b(13) || ay > 0.6, now);
+        prev = prev || P.repeat('left', b(14) || ax < -0.6, now) || edge(4);
+        next = next || P.repeat('right', b(15) || ax > 0.6, now) || edge(5);
+        if (pad.buttons.some(bt => bt.pressed) || len > 0.3) this.device = 'gamepad';
+        P.prev = pad.buttons.map((bt, i) => b(i));
       }
       if (h('KeyF')) {
         if (document.fullscreenElement) document.exitFullscreen();
@@ -146,7 +205,7 @@
       this.tap = null;
       this.hit.clear();
       return { x: Math.max(-1, Math.min(1, x)), y: Math.max(-1, Math.min(1, y)), fire, focus, hyper, drone, pause, start, prev, next, stats, quality,
-        up, down, back, inc, dragX, dragY, tap, touch: this.touch, finger: this.finger };
+        up, down, back, inc, dragX, dragY, tap, touch: this.touch, finger: this.finger, device: this.device };
     }
   }
 
@@ -229,7 +288,10 @@
     audio.ensure();
     audio.resume();
     audio.muffle(false, 0.01);
-    game = new Game(level, audio, { god: params.get('god') === '1', autoFire: params.get('auto') === '1', stats: save.stats() });
+    game = new Game(level, audio, {
+      god: params.get('god') === '1', autoFire: params.get('auto') === '1', stats: save.stats(),
+      rumble: (s, w, ms) => { if (input.device === 'gamepad') input.pad.rumble(s, w, ms); },
+    });
     const from = Number(params.get('at')) || 0;
     audio.play(buffer, from > 0 ? from : -2);
     if (from > 0) game.seek(from);
@@ -369,7 +431,8 @@
       else if (inp.start && level) start();
       else if (songs.length > 1 && (inp.prev || inp.next)) selectSong(songIdx + (inp.next ? 1 : -1));
     } else if (mode === 'play') {
-      if (inp.pause || portrait) { mode = 'paused'; audio.pause(); }
+      // Pause auch, wenn das Gamepad mitten im Spiel getrennt wird
+      if (inp.pause || portrait || input.pad.lost) { mode = 'paused'; audio.pause(); input.pad.lost = false; }
       else {
         game.update(dt, inp, songT);
         if (game.over && !game.overAt) { game.overAt = now; audio.fadeOut(2.5); }
@@ -384,6 +447,8 @@
 
     const st = { mode, songT, beat, levels: audio.ctx ? audio.levels() : [0, 0, 0], songName: song ? song.name : '',
       finger: inp.finger, touch: inp.touch || touchDevice };
+    renderer.device = inp.device === 'keyboard' && touchDevice ? 'touch' : inp.device;   // für die Tasten-Hinweise
+    inc.device = renderer.device;
     if (mode === 'incubator') renderer.incubator(inc, dt);
     else {
       renderer.frame(dt, mode === 'title' || mode === 'loading' ? null : game, st);
@@ -395,6 +460,14 @@
       if (mode === 'results') renderer.results(game, { hi, bank: save.coins, touch: st.touch });
     }
     if (portrait) renderer.rotateHint();
+    // Einblendung beim Verbinden/Trennen eines Gamepads
+    const note = input.pad.note;
+    if (note && (note.t -= dt) > 0) {
+      renderer.c.globalAlpha = Math.min(1, note.t * 2);
+      renderer.glowText(note.text, '700 30px "Orbitron", sans-serif', '#dff6ff', '#3fb4ff', 12, 960, 130);
+      if (note.sub) renderer.glowText(note.sub, '400 20px "Orbitron", sans-serif', 'rgba(205,239,255,0.8)', '', 0, 960, 165);
+      renderer.c.globalAlpha = 1;
+    }
     trackPerf(gap, performance.now() - cpu0, inp);
     drawPerf(dt);
     requestAnimationFrame(loop);

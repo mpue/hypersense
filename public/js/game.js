@@ -90,8 +90,10 @@
       this.coinSound = 0;
       this.missiles = [];
       this.missileT = 0;
-      this.rapidEnd = -1;            // Songzeit, bis zu der Rapid-Fire läuft
-      this.doubleEnd = -1;           // …bzw. doppelte Punkte
+      // Songzeiten, bis zu denen Rapid-Fire bzw. doppelte Punkte laufen. -Infinity statt -1:
+      // im Vorlauf vor Songbeginn ist die Songzeit negativ
+      this.rapidEnd = -Infinity;
+      this.doubleEnd = -Infinity;
       this.volleyN = 0;
       this.sinceDrop = 0;
       this.rank = 0;                 // Schwierigkeit 0..1, siehe updateRank()
@@ -111,7 +113,7 @@
       this.planned = [];
       this.waveIdx = 0;
       this.noteIdx = 0;
-      this.hyperEnd = -1;
+      this.hyperEnd = -Infinity;
       this.chain = 0;
       this.maxChain = 0;
       this.lastKillBeat = -99;
@@ -775,7 +777,8 @@
         this.bullets.length = 0;
         this.banner = { text: 'BASS CORE DOWN', sub: '', t0: this.songT, t1: this.songT + 3 };
       }
-      if (e.kind === 'cannon' || e.kind === 'carrier') this.shake = Math.max(this.shake, 14);
+      if (e.kind === 'cannon' || e.kind === 'carrier') { this.shake = Math.max(this.shake, 14); this.rumble(0.5, 0.3, 220); }
+      if (e.kind === 'boss') this.rumble(1, 0.8, 1200);
       if (e.kind === 'splitter') {
         // Zerfällt in fünf Scherben, die auseinanderfliegen und dann nach links abdriften
         const b0 = this.beat, x0 = e.x, y0 = e.y;
@@ -889,6 +892,7 @@
         this.flash = 0.6;
         this.shake = 14;
         this.audio.hyper();
+        this.rumble(0.35, 0.9, 600);
       }
       if (this.hyperOn) {
         for (const e of this.enemies) {
@@ -990,6 +994,11 @@
       this.missiles = this.missiles.filter(m => !m.dead);
     }
 
+    // Gamepad-Rumble (stark, schwach, ms) – nur wenn main.js einen Empfänger mitgibt
+    rumble(strong, weak, ms) {
+      if (this.opts.rumble) this.opts.rumble(strong, weak, ms);
+    }
+
     // Treffer: erst fängt der Schild ab, dann verliert die Hülle Energie; bei 0 ist das Schiff verloren.
     // Danach kurz unverwundbar, damit sich Treffer nicht stapeln.
     damagePlayer(dmg, pushOut = false) {
@@ -1005,6 +1014,7 @@
         this.bullets = this.bullets.filter(b => Math.hypot(b.x - p.x, b.y - p.y) > 220);
         this.popups.push({ x: p.x, y: p.y - 50, text: this.shield ? 'SHIELD ' + this.shield : 'SHIELD DOWN', t: 0 });
         this.audio.shieldHit();
+        this.rumble(0.2, 0.6, 140);
         return;
       }
       if (this.opts.god) { p.inv = 0.5; this.shake = 8; this.energyShow = 1; return; }
@@ -1018,6 +1028,7 @@
         this.addFx({ type: 'spark', x: p.x, y: p.y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0.35, size: 3, color: '#ff8a6a' });
       }
       this.audio.playerHit(this.energy / this.st.hullMax);
+      this.rumble(0.55 + 0.3 * dmg, 0.4, 180);
       if (this.energy <= 0) this.killPlayer();
     }
 
@@ -1031,10 +1042,11 @@
       this.shake = 22;
       this.audio.playerDie();
       this.audio.muffle(true);
+      this.rumble(1, 1, 500);
       this.weapon = Math.max(this.st.startWeapon, this.weapon - 2);   // nie unter die Startwaffe
       this.missileLvl = Math.max(this.st.startMissiles, this.missileLvl - 1);
       this.shield = 0;
-      this.rapidEnd = this.doubleEnd = -1;
+      this.rapidEnd = this.doubleEnd = -Infinity;
       this.missiles.length = 0;
       this.chain = 0;
       this.lives--;
